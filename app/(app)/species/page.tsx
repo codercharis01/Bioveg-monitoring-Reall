@@ -181,7 +181,7 @@ export default function SpeciesEntry() {
               </p>
             </div>
 
-            <div className="p-2 pt-1 space-y-1 max-h-[calc(100vh-320px)] overflow-y-auto">
+            <div className="p-2 pt-1 space-y-1 max-h-[250px] lg:max-h-[calc(100vh-320px)] overflow-y-auto">
               {filteredSurveys.map(survey => (
                 <div key={survey.id} className="flex items-center gap-1 group">
                   <button
@@ -248,8 +248,8 @@ export default function SpeciesEntry() {
               </div>
 
               {/* Species Table */}
-              <div className="species-table-wrap">
-                <table className="species-table min-w-max">
+              <div className="hidden md:block species-table-wrap">
+                <table className="species-table min-w-[700px]">
                   <thead>
                     <tr>
                       <th style={{ width: '32px' }}>#</th>
@@ -370,7 +370,10 @@ export default function SpeciesEntry() {
                                   <button 
                                     onClick={() => {
                                       if (confirm(`Are you sure you want to delete ${s.name}?`)) {
-                                        deleteSpecies(selectedSurvey.id, s.id);
+                                          let res;
+                                          if(selectedSurvey) {
+                                              deleteSpecies(selectedSurvey.id, s.id);
+                                          }
                                       }
                                       setOpenActionMenuId(null);
                                     }}
@@ -394,13 +397,111 @@ export default function SpeciesEntry() {
                   </tbody>
                 </table>
               </div>
+              
+              {/* Mobile Species Cards */}
+              <div className="md:hidden flex flex-col gap-4">
+                 {filteredSpecies.length > 0 ? (
+                    filteredSpecies.map((s, i) => {
+                      const abundance = s.quadrats.reduce((acc, val) => acc + val, 0);
+                      
+                      let stratumElement = <span className="text-moss/40">—</span>;
+                      if (s.stratum) {
+                        const lowerStr = s.stratum.toLowerCase();
+                        if (lowerStr.includes("sub-can") || lowerStr.includes("sub canopy")) {
+                          stratumElement = <span className="status-chip status-active" style={{ fontSize: '11px', background: '#e8f1ff', color: '#1d4ed8' }}>{s.stratum}</span>;
+                        } else if (lowerStr.includes("canopy")) {
+                          stratumElement = <span className="status-chip status-complete" style={{ fontSize: '11px' }}>{s.stratum}</span>;
+                        } else if (lowerStr.includes("understorey") || lowerStr.includes("understory") || lowerStr.includes("ground") || lowerStr.includes("shrub") || lowerStr.includes("root")) {
+                          stratumElement = <span className="status-chip status-pending" style={{ fontSize: '11px' }}>{s.stratum}</span>;
+                        } else {
+                          stratumElement = <span className="status-chip status-active" style={{ fontSize: '11px' }}>{s.stratum}</span>;
+                        }
+                      }
+                      
+                      return (
+                        <div key={s.id} className="border border-forest/10 rounded-xl p-4 bg-white">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                               <div className="font-semibold text-charcoal">{s.name}</div>
+                               <div className="text-[12px] text-moss/70">{s.localName || 'No local name'}</div>
+                            </div>
+                            <div className="relative">
+                              <button 
+                                onClick={() => setOpenActionMenuId(openActionMenuId === s.id ? null : s.id)}
+                                className="icon-btn" style={{ width: '28px', height: '28px', border: 'none' }}
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+                              {openActionMenuId === s.id && (
+                                <>
+                                  <div className="fixed inset-0 z-10" onClick={() => setOpenActionMenuId(null)} />
+                                  <div className="absolute right-0 top-8 w-32 bg-white rounded-lg shadow-lg border border-forest/10 py-1 z-20">
+                                    <button 
+                                      onClick={() => {
+                                        const newName = prompt("Edit Species Name:", s.name);
+                                        if (newName && newName.trim() !== '') {
+                                          updateSpecies(selectedSurvey.id, s.id, { name: newName.trim() });
+                                        }
+                                        setOpenActionMenuId(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2 text-[12px] text-moss hover:bg-mint"
+                                    >
+                                      Edit Name
+                                    </button>
+                                    <button 
+                                      onClick={() => {
+                                        setEditingSpeciesId(s.id);
+                                        setEditQuadrats([...s.quadrats]);
+                                        setOpenActionMenuId(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2 text-[12px] text-moss hover:bg-mint"
+                                    >
+                                      Edit Records
+                                    </button>
+                                    <button 
+                                      onClick={() => {
+                                        if (confirm(`Are you sure you want to delete ${s.name}?`)) {
+                                          if (selectedSurvey) {
+                                            deleteSpecies(selectedSurvey.id, s.id);
+                                          }
+                                        }
+                                        setOpenActionMenuId(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2 text-[12px] text-red-600 hover:bg-red-50"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-wrap gap-2 mb-3">
+                             <span className="family-badge">{s.family || 'Unknown'}</span>
+                             {stratumElement}
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-2 text-[12.5px] border-t border-forest/10 pt-3">
+                             <div className="text-moss/60">Abundance: <span className="font-semibold text-charcoal">{abundance}</span></div>
+                             <div className="text-moss/60 truncate">Notes: <span className="font-semibold text-charcoal" title={s.notes}>{s.notes || '—'}</span></div>
+                          </div>
+                        </div>
+                      );
+                    })
+                 ) : (
+                    <div className="p-8 text-center text-[13px] text-moss/70 bg-white rounded-xl border border-forest/10">
+                      {speciesList.length === 0 ? "No species recorded yet for this project." : "No species match your search."}
+                    </div>
+                 )}
+              </div>
 
               {/* Species Distribution Summary Table */}
               <div className="bg-white border border-forest/10 rounded-[16px] shadow-sm flex flex-col">
                 <div className="p-4 px-5 border-b border-forest/10 bg-mint">
                   <h3 className="text-[14px] font-semibold text-charcoal">Species Distribution Summary</h3>
                 </div>
-                <div className="p-0 overflow-x-auto">
+               <div className="hidden md:block overflow-x-auto">
                   <table className="w-full border-collapse min-w-max">
                     <thead>
                       <tr>
@@ -443,6 +544,29 @@ export default function SpeciesEntry() {
                       )}
                     </tbody>
                   </table>
+                </div>
+                
+                {/* Mobile Species Distribution Cards */}
+                <div className="md:hidden flex flex-col gap-2 p-2 bg-slate-50/50">
+                   {speciesList.length > 0 ? (
+                     speciesList.map((s) => (
+                        <div key={`dist-${s.id}`} className="bg-white border border-forest/10 p-3 rounded-lg flex flex-col gap-2">
+                           <div className="font-medium text-charcoal text-[13px]">{s.name}</div>
+                           <div className="flex flex-wrap gap-1">
+                              {s.quadrats.map((amount, i) => amount > 0 && (
+                                <div key={i} className="text-[10.5px] bg-sage-pale text-forest px-2 py-0.5 rounded border border-forest/10">
+                                  Q{i + 1}: <span className="font-bold">{amount}</span>
+                                </div>
+                              ))}
+                              {s.quadrats.reduce((a, b) => a + b, 0) === 0 && (
+                                <span className="text-[11px] text-moss/40">- recorded -</span>
+                              )}
+                           </div>
+                        </div>
+                     ))
+                   ) : (
+                      <div className="p-4 text-center text-moss/60 text-[12px]">No species data available</div>
+                   )}
                 </div>
               </div>
             </>

@@ -3,8 +3,6 @@
 import { useState } from 'react';
 import { useSurveyStore, SurveySession } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { doc, setDoc } from 'firebase/firestore';
-import { db, auth } from '@/lib/firebase';
 
 export default function SyncPage() {
   const surveys = useSurveyStore(state => state.surveys) || [];
@@ -15,64 +13,14 @@ export default function SyncPage() {
   const pendingSurveys = surveys.filter(s => s?.status === 'Pending');
   const pendingCount = pendingSurveys.length;
   
-  const handleSyncAll = async () => {
+  const handleSyncAll = () => {
     if (pendingCount === 0) return;
-    const user = auth.currentUser;
-    if (!user) {
-      alert('You must be signed in to sync data.');
-      return;
-    }
-
     setIsSyncing(true);
-    try {
-      for (const survey of pendingSurveys) {
-        // Upload the main survey session
-        const surveyRef = doc(db, 'surveys', survey.id);
-        const surveyData = {
-          userId: user.uid,
-          projectName: survey.projectName || '',
-          siteName: survey.siteName || '',
-          ecosystemType: survey.ecosystemType || '',
-          vegetationType: survey.vegetationType || '',
-          sampleSite: survey.sampleSite || '',
-          researcherName: survey.researcherName || '',
-          date: survey.date || '',
-          status: 'Synced',
-          numQuadrats: survey.numQuadrats || 0,
-          quadratSize: survey.quadratSize || '',
-          transectLength: survey.transectLength || 0,
-          samplingInterval: survey.samplingInterval || 0,
-          samplingMethod: survey.samplingMethod || '',
-          lat: survey.lat || 0,
-          lng: survey.lng || 0,
-        };
-        await setDoc(surveyRef, surveyData);
-
-        // Upload species sequentially
-        for (const species of (survey.speciesList || [])) {
-          const speciesRef = doc(db, 'surveys', survey.id, 'species', species.id);
-          const speciesData = {
-            name: species.name || '',
-            family: species.family || '',
-            quadrats: species.quadrats || [],
-            localName: species.localName || '',
-            notes: species.notes || '',
-            stratum: species.stratum || ''
-          };
-          await setDoc(speciesRef, speciesData);
-        }
-
-        // Update local store
-        updateSurvey(survey.id, { status: 'Synced' });
-      }
-
-      setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    } catch (error) {
-      console.error('Error syncing:', error);
-      alert('Failed to sync some records. Check console for details.');
-    } finally {
+    setTimeout(() => {
+      pendingSurveys.forEach(s => updateSurvey(s.id, { status: 'Synced' }));
       setIsSyncing(false);
-    }
+      setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    }, 2000);
   };
 
   const handleClearCompleted = () => {

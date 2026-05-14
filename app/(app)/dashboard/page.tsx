@@ -54,7 +54,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4 mb-7">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-7">
         <div className="bg-white border border-forest/10 rounded-[16px] p-4 lg:p-5 hover:shadow-sm hover:-translate-y-[1px] transition-all cursor-default">
           <div className="w-8 h-8 rounded-lg bg-sage-pale text-forest-mid flex items-center justify-center mb-3">
             <Leaf className="w-4 h-4" />

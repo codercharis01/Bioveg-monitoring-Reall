@@ -372,7 +372,7 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
                 <h3 className="text-[15px] font-semibold text-charcoal">Species Distribution Summary</h3>
                 <p className="text-[13px] text-moss/70 mt-0.5">Frequency and abundance across all quadrats</p>
               </div>
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left whitespace-nowrap min-w-max">
                   <thead className="bg-mint border-b border-forest/10">
                     <tr>
@@ -406,6 +406,27 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
                     })}
                   </tbody>
                 </table>
+              </div>
+              
+              {/* Mobile Distribution Summary Cards */}
+              <div className="md:hidden flex flex-col gap-2 p-3 bg-slate-50/50">
+                {speciesList.map((s) => (
+                  <div key={`dist-mob-${s.id}`} className="bg-white border border-forest/10 p-3 rounded-lg flex flex-col gap-2">
+                     <div className="flex justify-between items-start">
+                        <div className="font-medium text-charcoal text-[13.5px]">{s.name}</div>
+                        <div className="text-[12px] font-bold text-forest bg-mint/40 px-2 rounded-md border border-forest/10">
+                           Total: {s.quadrats.reduce((sum, val) => sum + val, 0)}
+                        </div>
+                     </div>
+                     <div className="flex flex-wrap gap-1 mt-1">
+                        {s.quadrats.map((amount, i) => amount > 0 && (
+                          <div key={i} className="text-[11px] bg-sage-pale text-forest px-2 py-0.5 rounded border border-forest/10 font-medium">
+                            Q{i + 1}: <span className="font-bold">{amount}</span>
+                          </div>
+                        ))}
+                     </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
