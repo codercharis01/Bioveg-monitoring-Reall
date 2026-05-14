@@ -1,0 +1,91 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "title": { "type": "string" },
+        "role": { "type": "string" },
+        "institution": { "type": "string" }
+      },
+      "required": ["firstName", "lastName"]
+    },
+    "AppPreferences": {
+      "title": "AppPreferences",
+      "description": "User device preferences",
+      "type": "object",
+      "properties": {
+        "autoSync": { "type": "boolean" },
+        "autoSyncMobile": { "type": "boolean" },
+        "gpsTracking": { "type": "boolean" },
+        "offlineImageCompression": { "type": "boolean" },
+        "scientificNameSuggestions": { "type": "boolean" },
+        "highAccuracyMode": { "type": "boolean" },
+        "backgroundTracking": { "type": "boolean" },
+        "coordinateFormat": { "type": "string" }
+      }
+    },
+    "SpeciesRecord": {
+      "title": "SpeciesRecord",
+      "description": "Recorded observation during a survey",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "family": { "type": "string" },
+        "quadrats": { 
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "localName": { "type": "string" },
+        "notes": { "type": "string" },
+        "stratum": { "type": "string" }
+      },
+      "required": ["name", "family", "quadrats"]
+    },
+    "SurveySession": {
+      "title": "SurveySession",
+      "description": "A field survey taking place at a site",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The ID of the user who owns the survey" },
+        "projectName": { "type": "string" },
+        "siteName": { "type": "string" },
+        "ecosystemType": { "type": "string" },
+        "vegetationType": { "type": "string" },
+        "sampleSite": { "type": "string" },
+        "researcherName": { "type": "string" },
+        "date": { "type": "string" },
+        "status": { "type": "string" },
+        "numQuadrats": { "type": "number" },
+        "quadratSize": { "type": "string" },
+        "transectLength": { "type": "number" },
+        "samplingInterval": { "type": "number" },
+        "samplingMethod": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" }
+      },
+      "required": ["userId", "projectName", "siteName", "ecosystemType", "researcherName", "date", "status", "numQuadrats"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile data."
+    },
+    "users/{userId}/settings/preferences": {
+      "schema": { "$ref": "#/entities/AppPreferences" },
+      "description": "User preferences."
+    },
+    "surveys/{surveyId}": {
+      "schema": { "$ref": "#/entities/SurveySession" },
+      "description": "A field survey."
+    },
+    "surveys/{surveyId}/species/{speciesId}": {
+      "schema": { "$ref": "#/entities/SpeciesRecord" },
+      "description": "Species recorded in the survey."
+    }
+  }
+}

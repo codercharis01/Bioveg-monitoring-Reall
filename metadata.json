@@ -1,0 +1,8 @@
+{
+  "name": "Bioveg Monitoring",
+  "description": "Modern ecological field survey and biodiversity analysis application",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}
