@@ -71,6 +71,18 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const prefs = useSurveyStore(state => state.preferences);
 
   useEffect(() => {
+    // Determine if this was a page refresh
+    if (typeof performance !== 'undefined') {
+      const navEntries = performance.getEntriesByType('navigation');
+      if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
+        if (pathname !== '/dashboard') {
+          router.replace('/dashboard');
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     let watchId: number | null = null;
     
     // Background tracking simulation
@@ -171,9 +183,28 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </div>
           <button 
             onClick={async () => {
-              const { auth } = await import('@/lib/firebase');
-              await auth.signOut();
-              router.push('/');
+              try {
+                const { auth, db } = await import('@/lib/firebase');
+                const user = auth.currentUser;
+                if (user) {
+                  const state = useSurveyStore.getState();
+                  const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
+                  if (pendingSurveys.length > 0) {
+                    const { writeBatch, doc } = await import('firebase/firestore');
+                    const batch = writeBatch(db);
+                    pendingSurveys.forEach(survey => {
+                      const docRef = doc(db, "surveys", survey.id);
+                      batch.set(docRef, { ...survey, userId: user.uid, syncStatus: "Synced" }, { merge: true });
+                    });
+                    await batch.commit();
+                    pendingSurveys.forEach(survey => {
+                      state.updateSurvey(survey.id, { status: "Synced" });
+                    });
+                  }
+                }
+                await auth.signOut();
+              } catch (e) { console.error(e); }
+              window.location.href = '/';
             }}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors text-[13.5px] text-white/65 hover:bg-white/5 hover:text-white/90"
           >
@@ -227,9 +258,28 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </Link>
             <button 
               onClick={async () => {
-                const { auth } = await import('@/lib/firebase');
-                await auth.signOut();
-                router.push('/');
+                try {
+                  const { auth, db } = await import('@/lib/firebase');
+                  const user = auth.currentUser;
+                  if (user) {
+                    const state = useSurveyStore.getState();
+                    const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
+                    if (pendingSurveys.length > 0) {
+                      const { writeBatch, doc } = await import('firebase/firestore');
+                      const batch = writeBatch(db);
+                      pendingSurveys.forEach(survey => {
+                        const docRef = doc(db, "surveys", survey.id);
+                        batch.set(docRef, { ...survey, userId: user.uid, syncStatus: "Synced" }, { merge: true });
+                      });
+                      await batch.commit();
+                      pendingSurveys.forEach(survey => {
+                        state.updateSurvey(survey.id, { status: "Synced" });
+                      });
+                    }
+                  }
+                  await auth.signOut();
+                } catch (e) { console.error(e); }
+                window.location.href = '/';
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-forest/20 text-forest hover:bg-forest/5 rounded-md text-[13px] font-medium transition-colors ml-1"
               title="Log Out"
@@ -337,9 +387,28 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 </Link>
                 <button 
                   onClick={async () => {
-                    const { auth } = await import('@/lib/firebase');
-                    await auth.signOut();
-                    router.push('/');
+                    try {
+                      const { auth, db } = await import('@/lib/firebase');
+                      const user = auth.currentUser;
+                      if (user) {
+                        const state = useSurveyStore.getState();
+                        const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
+                        if (pendingSurveys.length > 0) {
+                          const { writeBatch, doc } = await import('firebase/firestore');
+                          const batch = writeBatch(db);
+                          pendingSurveys.forEach(survey => {
+                            const docRef = doc(db, "surveys", survey.id);
+                            batch.set(docRef, { ...survey, userId: user.uid, syncStatus: "Synced" }, { merge: true });
+                          });
+                          await batch.commit();
+                          pendingSurveys.forEach(survey => {
+                            state.updateSurvey(survey.id, { status: "Synced" });
+                          });
+                        }
+                      }
+                      await auth.signOut();
+                    } catch (e) { console.error(e); }
+                    window.location.href = '/';
                   }}
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors text-[14.5px] text-white/70 hover:bg-white/10 hover:text-white"
                 >

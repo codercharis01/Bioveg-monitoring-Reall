@@ -6,10 +6,12 @@ import { useRouter, notFound } from 'next/navigation';
 import { ArrowLeft, Clock, UploadCloud, FileDown, Leaf, Edit, Trash } from 'lucide-react';
 import { useSurveyStore } from '@/lib/store';
 import { formatCoordinate } from '@/lib/utils';
-import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+import dynamic from 'next/dynamic';
 
-const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_PLATFORM_KEY || process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
-const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
+const LeafletMap = dynamic(
+  () => import('@/app/(app)/surveys/new/NewSurveyMap'),
+  { ssr: false }
+);
 
 export default function SurveyDetails({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -122,24 +124,15 @@ export default function SurveyDetails({ params }: { params: Promise<{ id: string
           )}
         </div>
         <div className="w-full h-[300px] bg-slate-100 flex items-center justify-center relative">
-          {(survey.lat && survey.lng && hasValidKey) ? (
-            <APIProvider apiKey={API_KEY} version="weekly">
-              <Map
-                defaultCenter={{ lat: survey.lat, lng: survey.lng }}
-                defaultZoom={12}
-                mapId={`AISTUDIO_SURVEY_${survey.id}`}
-                internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-                style={{ width: '100%', height: '100%' }}
-                gestureHandling="greedy"
-                disableDefaultUI={true}
-              >
-                <AdvancedMarker position={{ lat: survey.lat, lng: survey.lng }}>
-                  <Pin background="#4a7c59" borderColor="#fff" glyphColor="#fff" scale={1.2} />
-                </AdvancedMarker>
-              </Map>
-            </APIProvider>
+          {(survey.lat && survey.lng) ? (
+            <LeafletMap 
+              lat={survey.lat.toString()} 
+              lng={survey.lng.toString()} 
+              setPos={() => {}} // readonly
+              programmaticUpdate={false}
+            />
           ) : (
-             <p className="text-slate-400 text-sm">{!hasValidKey ? "Google Maps API Key not configured" : "No GPS data recorded for this survey"}</p>
+             <p className="text-slate-400 text-sm">No GPS data recorded for this survey</p>
           )}
         </div>
       </div>

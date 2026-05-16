@@ -1,10 +1,8 @@
 {
-  "projectId": "gen-lang-client-0770244038",
-  "appId": "1:543224592057:web:f7202940a961f384358d68",
-  "apiKey": "AIzaSyAdCa_lU9nrvDTzqwFYM6RaMsKdp9pVfkk",
-  "authDomain": "gen-lang-client-0770244038.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-09598199-a381-4073-8345-7d4213b9def2",
-  "storageBucket": "gen-lang-client-0770244038.firebasestorage.app",
-  "messagingSenderId": "543224592057",
-  "measurementId": ""
+  "projectId": "bioveg-monitoring",
+  "appId": "1:601348149252:web:a77d24ab93c6a9f2e12551",
+  "apiKey": "AIzaSyBGARUR5x-lNfbxPkTgTwnXTva0FEI3bKw",
+  "authDomain": "bioveg-monitoring.firebaseapp.com",
+  "storageBucket": "bioveg-monitoring.firebasestorage.app",
+  "messagingSenderId": "601348149252"
 }

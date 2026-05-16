@@ -1,24 +1,49 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSurveyStore, SurveySession } from '@/lib/store';
 import { useSyncEngine } from '@/hooks/useSyncEngine';
 import { cn } from '@/lib/utils';
-import { Cloud, Wifi, WifiOff, CloudUpload, ArrowRight, UserPlus, CloudOff } from 'lucide-react';
+import { Cloud, Wifi, WifiOff, CloudUpload, ArrowRight, UserPlus, CloudOff, Eye, EyeOff, Mail, CheckCircle2, UserCheck } from 'lucide-react';
 import { auth } from '@/lib/firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification, signOut, updateProfile, onAuthStateChanged } from 'firebase/auth';
+
+type AuthFlow = 'login' | 'register' | 'verify' | 'forgot' | 'reset-sent';
 
 export default function SyncPage() {
+  const router = useRouter();
   const surveys = useSurveyStore(state => state.surveys) || [];
   const identity = useSurveyStore(state => state.identity);
   const { syncing, syncData, error: syncError } = useSyncEngine();
+  const [view, setView] = useState<AuthFlow>('login');
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  
+  // Registration fields
+  const [title, setTitle] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [role, setRole] = useState('');
+  const [institution, setInstitution] = useState('');
+
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
 
   const pendingSurveys = surveys.filter(s => s?.status === 'Pending');
   const pendingCount = pendingSurveys.length;
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      // If user logs in successfully and is verified, auto-sync
+      if (user && user.emailVerified && pendingCount > 0 && !identity.isGuest) {
+        await syncData(user.uid);
+      }
+    });
+    return () => unsubscribe();
+  }, [pendingCount, identity.isGuest, syncData]);
   
   const handleSyncAll = async () => {
     if (pendingCount === 0 || identity.isGuest) return;
@@ -28,18 +53,78 @@ export default function SyncPage() {
     }
   };
 
-  const handleCreateAccount = async (e: React.FormEvent) => {
+  const handleAuthAction = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
     setAuthError('');
     try {
-      if (!email || !password) throw new Error("Please fill in both fields");
-      // This will trigger the global auth observer and auto-migrate standard data
-      await createUserWithEmailAndPassword(auth, email, password);
+      if (!email && view !== 'forgot') throw new Error("Please enter your email");
+      
+      if (view === 'login') {
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        if (!userCredential.user.emailVerified) {
+          await sendEmailVerification(userCredential.user);
+          await signOut(auth);
+          setView('verify');
+          setAuthLoading(false);
+          return;
+        }
+
+        // Auto-sync
+        const state = useSurveyStore.getState();
+        const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
+        if (pendingSurveys.length > 0) {
+          try {
+            const { writeBatch, doc } = await import('firebase/firestore');
+            const { db } = await import('@/lib/firebase');
+            const batch = writeBatch(db);
+            pendingSurveys.forEach(survey => {
+              const docRef = doc(db, "surveys", survey.id);
+              batch.set(docRef, { ...survey, userId: userCredential.user.uid, syncStatus: "Synced" }, { merge: true });
+            });
+            await batch.commit();
+            pendingSurveys.forEach(survey => {
+              state.updateSurvey(survey.id, { status: "Synced" });
+            });
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        
+        if (state.identity.isGuest) {
+          state.setIdentity({ isGuest: false });
+        }
+        router.push('/dashboard');
+      } else if (view === 'register') {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        await updateProfile(user, {
+          displayName: `${firstName} ${lastName}`.trim()
+        });
+        await sendEmailVerification(user);
+        await signOut(auth);
+        setView('verify');
+      } else if (view === 'forgot') {
+        if (!email) throw new Error("Please enter your email address.");
+        await sendPasswordResetEmail(auth, email);
+        setView('reset-sent');
+      }
     } catch (err: any) {
-      setAuthError(err.message);
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        setAuthError("Password or Email Incorrect");
+      } else if (err.code === 'auth/email-already-in-use') {
+        setAuthError("User already exists, Sign In?");
+      } else if (err.code === 'auth/weak-password') {
+        setAuthError("Password should be at least 6 characters.");
+      } else {
+        let msg = err.message;
+        if (msg.includes('Firebase:')) {
+          msg = msg.replace(/Firebase:\s*/, '').replace(/\s*\(auth[^)]+\)\.?/, '');
+        }
+        setAuthError(msg);
+      }
     } finally {
-      setAuthLoading(false);
+      if (view !== 'verify') setAuthLoading(false);
     }
   };
 
@@ -67,31 +152,146 @@ export default function SyncPage() {
                  All your {surveys.length} local records and biodiversity calculations will be successfully merged and preserved during the upgrade process.
                </div>
              </div>
-             <div className="w-full md:w-[320px] bg-slate-50 border border-slate-200 p-5 rounded-xl">
-               <h3 className="font-semibold text-charcoal mb-4 flex items-center gap-2">
-                 <UserPlus className="w-4 h-4 text-forest" /> Create Account
-               </h3>
-               {authError && <div className="p-3 mb-4 bg-red-50 text-red-600 text-xs rounded border border-red-100">{authError}</div>}
-               <form onSubmit={handleCreateAccount} className="space-y-4">
-                 <div>
-                   <label className="block text-[12px] font-medium text-moss/70 mb-1">Email</label>
-                   <input 
-                     type="email" required value={email} onChange={e=>setEmail(e.target.value)}
-                     className="w-full bg-white border border-slate-200 px-3 py-2 rounded-lg text-sm outline-none focus:border-forest/50" />
+             <div className="w-full md:w-[350px] bg-slate-50 border border-slate-200 p-5 rounded-xl">
+               {view === 'verify' && (
+                 <div className="text-center">
+                   <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                     <Mail className="w-6 h-6 text-emerald-700" />
+                   </div>
+                   <h3 className="font-semibold text-charcoal mb-2">Verify your email</h3>
+                   <p className="text-[13px] text-moss/70 mb-4">
+                     We have sent you a verification email to <span className="font-semibold">{email}</span>. Verify it and log in.
+                   </p>
+                   <button 
+                     onClick={() => setView('login')}
+                     className="w-full bg-forest text-white py-2.5 rounded-lg text-[13px] font-medium hover:bg-forest-mid transition-colors"
+                   >
+                     Return to Sign In
+                   </button>
                  </div>
-                 <div>
-                   <label className="block text-[12px] font-medium text-moss/70 mb-1">Password</label>
-                   <input 
-                     type="password" required value={password} onChange={e=>setPassword(e.target.value)}
-                     className="w-full bg-white border border-slate-200 px-3 py-2 rounded-lg text-sm outline-none focus:border-forest/50" />
+               )}
+
+               {view === 'reset-sent' && (
+                 <div className="text-center">
+                   <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                     <CheckCircle2 className="w-6 h-6 text-emerald-700" />
+                   </div>
+                   <h3 className="font-semibold text-charcoal mb-2">Check your email</h3>
+                   <p className="text-[13px] text-moss/70 mb-4">
+                     We sent you a password change link to <span className="font-semibold">{email}</span>.
+                   </p>
+                   <button 
+                     onClick={() => setView('login')}
+                     className="w-full bg-forest text-white py-2.5 rounded-lg text-[13px] font-medium hover:bg-forest-mid transition-colors"
+                   >
+                     Sign In
+                   </button>
                  </div>
-                 <button 
-                  disabled={authLoading}
-                  className="w-full bg-forest text-white py-2.5 rounded-lg text-[13px] font-medium hover:bg-forest-mid transition-colors mt-2 disabled:opacity-75"
-                 >
-                   {authLoading ? 'Upgrading...' : 'Save & Sync Data'}
-                 </button>
-               </form>
+               )}
+
+               {view === 'forgot' && (
+                 <div>
+                   <h3 className="font-semibold text-charcoal mb-2">Forgot password?</h3>
+                   <p className="text-[13px] text-moss/70 mb-4">Enter your email address to receive a password reset link.</p>
+                   {authError && <div className="p-3 mb-4 bg-red-50 text-red-600 text-xs rounded border border-red-100">{authError}</div>}
+                   <form onSubmit={handleAuthAction} className="space-y-4">
+                     <div>
+                       <label className="block text-[12px] font-medium text-moss/70 mb-1">Email address</label>
+                       <input 
+                         type="email" required value={email} onChange={e=>setEmail(e.target.value)}
+                         className="w-full bg-white border border-slate-200 px-3 py-2 rounded-lg text-sm outline-none focus:border-forest/50" />
+                     </div>
+                     <div className="pt-2 space-y-2">
+                       <button 
+                         disabled={authLoading}
+                         className="w-full bg-forest text-white py-2.5 rounded-lg text-[13px] font-medium hover:bg-forest-mid transition-colors disabled:opacity-75"
+                       >
+                         {authLoading ? 'Sending...' : 'Get Reset Link'}
+                       </button>
+                       <button 
+                         type="button"
+                         onClick={() => { setView('login'); setAuthError(''); }}
+                         className="w-full bg-white border border-slate-200 text-slate-700 py-2.5 rounded-lg text-[13px] font-medium hover:bg-slate-50 transition-colors"
+                       >
+                         Back to Sign In
+                       </button>
+                     </div>
+                   </form>
+                 </div>
+               )}
+
+               {(view === 'login' || view === 'register') && (
+                 <div>
+                   <h3 className="font-semibold text-charcoal mb-4 flex items-center gap-2">
+                     <UserPlus className="w-4 h-4 text-forest" /> {view === 'register' ? 'Create Account' : 'Sign In'}
+                   </h3>
+                   {authError && (
+                     <div className="p-3 mb-4 bg-red-50 text-red-600 text-xs rounded border border-red-100">
+                       {authError}
+                       {authError === "Password or Email Incorrect" && view === 'login' && (
+                         <div className="mt-1">
+                           <button type="button" onClick={() => setView('forgot')} className="underline font-semibold">Reset password?</button>
+                         </div>
+                       )}
+                     </div>
+                   )}
+                   <form onSubmit={handleAuthAction} className="space-y-3">
+                     {view === 'register' && (
+                       <>
+                         <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label className="block text-[12px] font-medium text-moss/70 mb-1">First Name</label>
+                              <input required type="text" value={firstName} onChange={e=>setFirstName(e.target.value)} className="w-full bg-white border border-slate-200 px-3 py-2 rounded-lg text-sm outline-none focus:border-forest/50" />
+                            </div>
+                            <div className="flex-1">
+                              <label className="block text-[12px] font-medium text-moss/70 mb-1">Last Name</label>
+                              <input required type="text" value={lastName} onChange={e=>setLastName(e.target.value)} className="w-full bg-white border border-slate-200 px-3 py-2 rounded-lg text-sm outline-none focus:border-forest/50" />
+                            </div>
+                         </div>
+                       </>
+                     )}
+                     <div>
+                       <label className="block text-[12px] font-medium text-moss/70 mb-1">Email</label>
+                       <input 
+                         type="email" required value={email} onChange={e=>setEmail(e.target.value)}
+                         className="w-full bg-white border border-slate-200 px-3 py-2 rounded-lg text-sm outline-none focus:border-forest/50" />
+                     </div>
+                     <div>
+                       <div className="flex items-center justify-between mb-1">
+                         <label className="block text-[12px] font-medium text-moss/70">Password</label>
+                       </div>
+                       <div className="relative">
+                         <input 
+                           type={showPassword ? "text" : "password"} required value={password} onChange={e=>setPassword(e.target.value)}
+                           className="w-full bg-white border border-slate-200 px-3 py-2 pr-10 rounded-lg text-sm outline-none focus:border-forest/50" />
+                         <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                           {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                         </button>
+                       </div>
+                       {view === 'login' && (
+                         <div className="flex justify-end mt-1">
+                           <button type="button" onClick={() => setView('forgot')} className="text-[12px] font-medium text-forest hover:text-forest-mid">Forgot password?</button>
+                         </div>
+                       )}
+                     </div>
+                     <div className="pt-2 space-y-2">
+                       <button 
+                         disabled={authLoading}
+                         className="w-full bg-forest text-white py-2.5 rounded-lg text-[13px] font-medium hover:bg-forest-mid transition-colors disabled:opacity-75"
+                       >
+                         {authLoading ? 'Processing...' : (view === 'register' ? 'Save & Sync Data' : 'Sign In & Sync')}
+                       </button>
+                       <button 
+                         type="button"
+                         onClick={() => { setView(view === 'login' ? 'register' : 'login'); setAuthError(''); }}
+                         className="w-full bg-white border border-slate-200 text-slate-700 py-2.5 rounded-lg text-[13px] font-medium hover:bg-slate-50 transition-colors"
+                       >
+                         {view === 'register' ? 'Already have an account? Sign In' : 'Create a New Account'}
+                       </button>
+                     </div>
+                   </form>
+                 </div>
+               )}
              </div>
           </div>
         </div>

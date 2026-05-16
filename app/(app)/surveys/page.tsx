@@ -13,6 +13,12 @@ export default function SurveysList() {
   const deleteSurvey = useSurveyStore(state => state.deleteSurvey);
   
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredSurveys = surveys.filter(s => 
+    (s?.projectName || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (s?.siteName || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const toggleMenu = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
@@ -28,6 +34,23 @@ export default function SurveysList() {
       useSurveyStore.getState().updateSurvey(survey.id, { projectName: newName });
     }
     setOpenMenuId(null);
+  };
+
+  const handleExport = () => {
+    const csvRows = [];
+    const headers = ['ID', 'Project Name', 'Site Name', 'Ecosystem Type', 'Date', 'Status', 'No. Quadrats', 'Lat', 'Lng'];
+    csvRows.push(headers.join(','));
+    for (const s of filteredSurveys) {
+      const row = [s?.id, s?.projectName, s?.siteName, s?.ecosystemType, s?.date, s?.status, s?.numQuadrats, s?.lat, s?.lng].map(v => `"${v || ''}"`);
+      csvRows.push(row.join(','));
+    }
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'surveys.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Compute stats
@@ -52,11 +75,22 @@ export default function SurveysList() {
             Synced 2m ago
           </div>
           
-          <button className="p-2.5 bg-white border border-forest/15 rounded-lg text-moss/60 hover:text-forest hover:bg-forest/5 transition-colors focus:outline-none">
-            <Search className="w-[18px] h-[18px]" />
-          </button>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-moss/50" />
+            <input 
+              type="text" 
+              placeholder="Search projects..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-4 py-2 bg-white border border-forest/15 rounded-lg text-sm text-charcoal outline-none focus:border-forest/50 transition-colors w-48 sm:w-64"
+            />
+          </div>
           
-          <button className="p-2.5 bg-white border border-forest/15 rounded-lg text-moss/60 hover:text-forest hover:bg-forest/5 transition-colors focus:outline-none">
+          <button 
+            onClick={handleExport}
+            className="p-2.5 bg-white border border-forest/15 rounded-lg text-moss/60 hover:text-forest hover:bg-forest/5 transition-colors focus:outline-none"
+            title="Export to CSV"
+          >
             <Upload className="w-[18px] h-[18px]" />
           </button>
           
@@ -91,7 +125,7 @@ export default function SurveysList() {
                 </tr>
               </thead>
               <tbody>
-                  {surveys.map((survey, index) => {
+                  {filteredSurveys.map((survey, index) => {
                     const totalSpeciesInSurvey = survey?.speciesList?.length || 0;
                     const qSizeText = survey?.quadratSize || '20 × 20 m (400 m²)';
                     
@@ -198,7 +232,7 @@ export default function SurveysList() {
 
             {/* Mobile Card View */}
             <div className="md:hidden flex flex-col p-4 gap-4">
-              {surveys.map((survey, index) => {
+              {filteredSurveys.map((survey, index) => {
                 const totalSpeciesInSurvey = survey?.speciesList?.length || 0;
                 return (
                   <div 
