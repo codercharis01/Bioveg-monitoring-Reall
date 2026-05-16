@@ -281,7 +281,7 @@ export default function SurveysList() {
           </>
         ) : (
           <div className="p-12 text-center text-[13px] text-moss/70 flex-1 flex flex-col items-center justify-center min-h-[300px]">
-             No surveys found. Click "New Survey" to get started.
+             No surveys found. Click &quot;New Survey&quot; to get started.
           </div>
         )}
       </div>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Leaf, ArrowRight } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
+import { useSurveyStore } from '@/lib/store';
 
 export default function Home() {
   const [email, setEmail] = useState('');
@@ -153,10 +154,16 @@ export default function Home() {
           </div>
 
           <div className="mt-8">
-            <Link href="/dashboard" className="w-full group bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-medium py-3 rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2">
+            <button 
+              onClick={() => {
+                useSurveyStore.getState().initGuestIdentity();
+                router.push('/dashboard');
+              }}
+              className="w-full group bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-medium py-3 rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
+            >
               <span>Continue Offline Mode</span>
               <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-700 group-hover:translate-x-0.5 transition-all" />
-            </Link>
+            </button>
             <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed max-w-sm mx-auto">
               Proceed without an internet connection. Data will be saved locally and sync can be triggered later.
             </p>

@@ -50,13 +50,23 @@ export interface AppPreferences {
   coordinateFormat: string;
 }
 
+export interface UserIdentity {
+  guest_user_id: string | null;
+  local_device_id: string | null;
+  local_session_token: string | null;
+  isGuest: boolean;
+}
+
 export interface SurveyState {
   surveys: SurveySession[];
   profile: UserProfile;
   preferences: AppPreferences;
+  identity: UserIdentity;
   draftSurvey?: Partial<SurveySession>;
   
   // Actions
+  initGuestIdentity: () => void;
+  setIdentity: (identity: Partial<UserIdentity>) => void;
   addSurvey: (config: { projectName: string, siteName: string, ecosystemType: string, vegetationType?: string, sampleSite?: string, researcherName: string, date?: string, numQuadrats: number, quadratSize?: string, transectLength?: number, samplingInterval?: number, samplingMethod?: string, lat?: number, lng?: number }) => string;
   updateDraft: (data: Partial<SurveySession>) => void;
   clearDraft: () => void;
@@ -79,6 +89,12 @@ export const useSurveyStore = create<SurveyState>()(
         title: 'MSc.',
         role: 'Lead Researcher',
         institution: 'University of Nigeria, Nsukka',
+      },
+      identity: {
+        guest_user_id: null,
+        local_device_id: null,
+        local_session_token: null,
+        isGuest: true,
       },
   preferences: {
     autoSync: true,
@@ -195,6 +211,23 @@ export const useSurveyStore = create<SurveyState>()(
     set((state) => ({ surveys: [newSession, ...state.surveys] }));
     return id;
   },
+
+  initGuestIdentity: () => set((state) => {
+    if (state.identity.guest_user_id) return state; // Already initialized
+    const did = 'dev_' + Math.random().toString(36).substring(2, 10);
+    return {
+      identity: {
+        guest_user_id: 'guest_researcher_' + Math.floor(Math.random() * 100000),
+        local_device_id: did,
+        local_session_token: 'offline_token_' + Date.now().toString(36),
+        isGuest: true,
+      }
+    };
+  }),
+
+  setIdentity: (newIdentity) => set((state) => ({
+    identity: { ...state.identity, ...newIdentity }
+  })),
 
   updateDraft: (data) => set((state) => ({ 
     draftSurvey: { ...state.draftSurvey, ...data } 

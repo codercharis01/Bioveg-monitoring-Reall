@@ -3,9 +3,10 @@
 import { ReactNode, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, Compass, Map as MapIcon, BarChart3, Settings, Leaf, PlusCircle, Trees, RefreshCw, FileText, Share2, Disc3, Menu, X, ArrowLeft } from 'lucide-react';
+import { Home, Compass, Map as MapIcon, BarChart3, Settings, Leaf, PlusCircle, Trees, RefreshCw, FileText, Share2, Disc3, Menu, X, ArrowLeft, WifiOff, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSurveyStore } from '@/lib/store';
+import { useSyncEngine } from '@/hooks/useSyncEngine';
 
 const navSections = [
   {
@@ -54,49 +55,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const surveys = useSurveyStore(state => state.surveys);
   const profile = useSurveyStore(state => state.profile);
+  const identity = useSurveyStore(state => state.identity);
   const pInitials = profile?.firstName?.[0]?.toUpperCase() || 'U';
 
-  useEffect(() => {
-    const checkSync = () => {
-      const state = useSurveyStore.getState();
-      const prefs = state.preferences;
-      
-      const isOnline = navigator.onLine;
-      const connection = (navigator as any).connection;
-      
-      let isWifi = true;
-      let isCellular = false;
-      
-      if (connection && connection.type) {
-        isWifi = connection.type === 'wifi';
-        isCellular = ['cellular', '4g', '3g', '2g'].includes(connection.type);
-      }
-      
-      let shouldSync = false;
-      if (isOnline) {
-        if (prefs.autoSync && isWifi) shouldSync = true;
-        if (prefs.autoSyncMobile && isCellular) shouldSync = true;
-        if (!connection && (prefs.autoSync || prefs.autoSyncMobile)) shouldSync = true;
-      }
-      
-      if (shouldSync) {
-        const pending = state.surveys.filter(s => s.status === 'Pending');
-        if (pending.length > 0) {
-          pending.forEach(s => state.updateSurvey(s.id, { status: 'Synced' }));
-        }
-      }
-    };
-
-    checkSync();
-    
-    const intervalId = setInterval(checkSync, 15000);
-    window.addEventListener('online', checkSync);
-    
-    return () => {
-      clearInterval(intervalId);
-      window.removeEventListener('online', checkSync);
-    };
-  }, []);
+  useSyncEngine();
 
   useEffect(() => {
     if (mobileMenuOpen) {
@@ -215,13 +177,29 @@ export function AppLayout({ children }: { children: ReactNode }) {
             }}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors text-[13.5px] text-white/65 hover:bg-white/5 hover:text-white/90"
           >
-            <span className="font-normal">Exit to Home</span>
+            <LogOut className="w-4 h-4 opacity-80" />
+            <span className="font-normal">Log Out</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 min-h-0">
+        {/* Offline Banner */}
+        {identity?.isGuest && (
+          <div className="bg-amber-100/50 border-b border-amber-200/60 text-amber-800 px-4 py-2 text-[13px] flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <WifiOff className="w-4 h-4 text-amber-600" />
+              <span className="font-semibold">OFFLINE MODE ACTIVE:</span>
+              <span className="hidden sm:inline">Your ecological surveys are stored locally and will sync when internet becomes available.</span>
+              <span className="sm:hidden">Local mode.</span>
+            </div>
+            <Link href="/sync" className="text-amber-700 font-semibold hover:underline text-xs bg-amber-200/50 px-2 py-1 rounded hidden sm:block">
+              Create Account &rarr;
+            </Link>
+          </div>
+        )}
+        
         {/* Topbar */}
         <header className="h-[56px] bg-white border-b border-forest/10 flex items-center px-6 gap-4 flex-shrink-0">
           {showBack && (
@@ -247,6 +225,18 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <PlusCircle className="w-[15px] h-[15px]" />
               <span className="hidden sm:inline">New Survey</span>
             </Link>
+            <button 
+              onClick={async () => {
+                const { auth } = await import('@/lib/firebase');
+                await auth.signOut();
+                router.push('/');
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-forest/20 text-forest hover:bg-forest/5 rounded-md text-[13px] font-medium transition-colors ml-1"
+              title="Log Out"
+            >
+              <LogOut className="w-[15px] h-[15px]" />
+              <span className="hidden sm:inline">Log Out</span>
+            </button>
           </div>
         </header>
 
@@ -353,7 +343,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   }}
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors text-[14.5px] text-white/70 hover:bg-white/10 hover:text-white"
                 >
-                  <span className="font-medium">Exit to Home</span>
+                  <LogOut className="w-5 h-5 opacity-80" />
+                  <span className="font-medium">Log Out</span>
                 </button>
               </div>
           </div>
