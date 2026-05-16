@@ -28,6 +28,55 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
+  // Discard offline auto-login. On refresh or new tab of the sign-in page, sign them out.
+  useEffect(() => {
+    let shouldLogOutAndRedirect = false;
+    if (typeof sessionStorage !== 'undefined') {
+      if (!sessionStorage.getItem('in_session')) {
+        sessionStorage.setItem('in_session', 'true');
+        shouldLogOutAndRedirect = true;
+      }
+    }
+    if (typeof performance !== 'undefined') {
+      const navEntries = performance.getEntriesByType('navigation');
+      if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
+        shouldLogOutAndRedirect = true;
+      }
+    }
+
+    if (shouldLogOutAndRedirect) {
+      const handleSyncAndLogOut = async () => {
+        try {
+          const { db } = await import('@/lib/firebase');
+          await auth.authStateReady();
+          const user = auth.currentUser;
+          if (user) {
+            const state = useSurveyStore.getState();
+            const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
+            if (pendingSurveys.length > 0) {
+              const { writeBatch, doc } = await import('firebase/firestore');
+              const batch = writeBatch(db);
+              pendingSurveys.forEach(survey => {
+                const docRef = doc(db, "surveys", survey.id);
+                batch.set(docRef, { ...survey, userId: user.uid, syncStatus: "Synced", updatedAt: new Date().toISOString() }, { merge: true });
+              });
+              await batch.commit();
+              pendingSurveys.forEach(survey => {
+                state.updateSurvey(survey.id, { status: "Synced" });
+              });
+            }
+          }
+          await auth.signOut();
+        } catch (e) {
+          console.error(e);
+        } finally {
+          useSurveyStore.getState().setIdentity({ isGuest: false });
+        }
+      };
+      handleSyncAndLogOut();
+    }
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       // Only auto-redirect if they are verified and in the login view
@@ -62,8 +111,11 @@ export default function Home() {
           state.setIdentity({ isGuest: false });
         }
         router.push('/dashboard');
+      } else if (!user && view === 'login') {
+        // Just stay on login view
       }
     });
+
     return () => unsubscribe();
   }, [router, view]);
 

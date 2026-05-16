@@ -71,14 +71,55 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const prefs = useSurveyStore(state => state.preferences);
 
   useEffect(() => {
-    // Determine if this was a page refresh
+    let shouldLogOutAndRedirect = false;
+    
+    // Check if it's a completely new session tab
+    if (typeof sessionStorage !== 'undefined') {
+      if (!sessionStorage.getItem('in_session')) {
+        sessionStorage.setItem('in_session', 'true');
+        shouldLogOutAndRedirect = true;
+      }
+    }
+    
+    // Check if it's a reload
     if (typeof performance !== 'undefined') {
       const navEntries = performance.getEntriesByType('navigation');
       if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
-        if (pathname !== '/dashboard') {
-          router.replace('/dashboard');
-        }
+        shouldLogOutAndRedirect = true;
       }
+    }
+    
+    if (shouldLogOutAndRedirect) {
+      const handleSyncAndLogOut = async () => {
+        try {
+          const { auth, db } = await import('@/lib/firebase');
+          await auth.authStateReady();
+          const user = auth.currentUser;
+          if (user) {
+            const state = useSurveyStore.getState();
+            const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
+            if (pendingSurveys.length > 0) {
+              const { writeBatch, doc } = await import('firebase/firestore');
+              const batch = writeBatch(db);
+              pendingSurveys.forEach(survey => {
+                const docRef = doc(db, "surveys", survey.id);
+                batch.set(docRef, { ...survey, userId: user.uid, syncStatus: "Synced", updatedAt: new Date().toISOString() }, { merge: true });
+              });
+              await batch.commit();
+              pendingSurveys.forEach(survey => {
+                state.updateSurvey(survey.id, { status: "Synced" });
+              });
+            }
+          }
+          await auth.signOut();
+        } catch (e) {
+          console.error(e);
+        } finally {
+          useSurveyStore.getState().setIdentity({ isGuest: false });
+          window.location.href = '/';
+        }
+      };
+      handleSyncAndLogOut();
     }
   }, []);
 
@@ -202,6 +243,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     });
                   }
                 }
+                useSurveyStore.getState().setIdentity({ isGuest: false });
                 await auth.signOut();
               } catch (e) { console.error(e); }
               window.location.href = '/';
@@ -277,6 +319,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                       });
                     }
                   }
+                  useSurveyStore.getState().setIdentity({ isGuest: false });
                   await auth.signOut();
                 } catch (e) { console.error(e); }
                 window.location.href = '/';
@@ -406,6 +449,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                           });
                         }
                       }
+                      useSurveyStore.getState().setIdentity({ isGuest: false });
                       await auth.signOut();
                     } catch (e) { console.error(e); }
                     window.location.href = '/';

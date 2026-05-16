@@ -104,14 +104,31 @@ export default function NewSurvey() {
 
   const handleGetLocation = () => {
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((position) => {
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const latitude = position.coords.latitude.toFixed(6);
+        const longitude = position.coords.longitude.toFixed(6);
+
         setProgrammaticUpdate(true);
         setFormData(prev => ({
           ...prev,
-          lat: position.coords.latitude.toFixed(6),
-          lng: position.coords.longitude.toFixed(6)
+          lat: latitude,
+          lng: longitude
         }));
         setTimeout(() => setProgrammaticUpdate(false), 500);
+
+        try {
+          const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
+          const data = await resp.json();
+          if (data && data.display_name) {
+            setFormData(prev => ({
+              ...prev,
+              sampleSite: data.display_name
+            }));
+          }
+        } catch (e) {
+          console.error('Reverse geocoding failed:', e);
+        }
+
       }, undefined, { enableHighAccuracy: preferences.highAccuracyMode });
     }
   };
