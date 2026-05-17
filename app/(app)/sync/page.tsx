@@ -6,8 +6,7 @@ import { useSurveyStore, SurveySession } from '@/lib/store';
 import { useSyncEngine } from '@/hooks/useSyncEngine';
 import { cn } from '@/lib/utils';
 import { Cloud, Wifi, WifiOff, CloudUpload, ArrowRight, UserPlus, CloudOff, Eye, EyeOff, Mail, CheckCircle2, UserCheck } from 'lucide-react';
-import { auth } from '@/lib/firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification, signOut, updateProfile, onAuthStateChanged } from 'firebase/auth';
+import { supabase } from '@/lib/supabase';
 
 type AuthFlow = 'login' | 'register' | 'verify' | 'forgot' | 'reset-sent';
 
@@ -36,20 +35,24 @@ export default function SyncPage() {
   const pendingCount = pendingSurveys.length;
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      // If user logs in successfully and is verified, auto-sync
-      if (user && user.emailVerified && pendingCount > 0 && !identity.isGuest) {
-        await syncData(user.uid);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // If user logs in successfully, auto-sync
+      if (session?.user && pendingCount > 0 && !identity.isGuest) {
+        await syncData(session.user.id);
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [pendingCount, identity.isGuest, syncData]);
   
   const handleSyncAll = async () => {
     if (pendingCount === 0 || identity.isGuest) return;
-    const user = auth.currentUser;
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (user) {
-      await syncData(user.uid);
+      await syncData(user.id);
     }
   };
 
@@ -61,31 +64,28 @@ export default function SyncPage() {
       if (!email && view !== 'forgot') throw new Error("Please enter your email");
       
       if (view === 'login') {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        if (!userCredential.user.emailVerified) {
-          await sendEmailVerification(userCredential.user);
-          await signOut(auth);
-          setView('verify');
-          setAuthLoading(false);
-          return;
-        }
+        const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+        if (authError) throw authError;
 
         // Auto-sync
         const state = useSurveyStore.getState();
         const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
         if (pendingSurveys.length > 0) {
           try {
-            const { writeBatch, doc } = await import('firebase/firestore');
-            const { db } = await import('@/lib/firebase');
-            const batch = writeBatch(db);
-            pendingSurveys.forEach(survey => {
-              const docRef = doc(db, "surveys", survey.id);
-              batch.set(docRef, { ...survey, userId: userCredential.user.uid, syncStatus: "Synced" }, { merge: true });
-            });
-            await batch.commit();
-            pendingSurveys.forEach(survey => {
-              state.updateSurvey(survey.id, { status: "Synced" });
-            });
+            const updates = pendingSurveys.map(survey => ({
+              id: survey.id,
+              user_id: data.user.id,
+              device_id: state.identity.local_device_id,
+              survey_data: survey,
+              sync_status: "Synced",
+              updated_at: new Date().toISOString()
+            }));
+            const { error: dbError } = await supabase.from('surveys').upsert(updates);
+            if (!dbError) {
+              pendingSurveys.forEach(survey => {
+                state.updateSurvey(survey.id, { status: "Synced" });
+              });
+            }
           } catch (e) {
             console.error(e);
           }
@@ -96,32 +96,34 @@ export default function SyncPage() {
         }
         router.push('/dashboard');
       } else if (view === 'register') {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        await updateProfile(user, {
-          displayName: `${firstName} ${lastName}`.trim()
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              title,
+              role,
+              institution
+            }
+          }
         });
-        await sendEmailVerification(user);
-        await signOut(auth);
+        if (signUpError) throw signUpError;
         setView('verify');
       } else if (view === 'forgot') {
         if (!email) throw new Error("Please enter your email address.");
-        await sendPasswordResetEmail(auth, email);
+        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        if (error) throw error;
         setView('reset-sent');
       }
     } catch (err: any) {
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+      if (err.message === 'Invalid login credentials') {
         setAuthError("Password or Email Incorrect");
-      } else if (err.code === 'auth/email-already-in-use') {
+      } else if (err.message.includes('already registered')) {
         setAuthError("User already exists, Sign In?");
-      } else if (err.code === 'auth/weak-password') {
-        setAuthError("Password should be at least 6 characters.");
       } else {
-        let msg = err.message;
-        if (msg.includes('Firebase:')) {
-          msg = msg.replace(/Firebase:\s*/, '').replace(/\s*\(auth[^)]+\)\.?/, '');
-        }
-        setAuthError(msg);
+        setAuthError(err.message);
       }
     } finally {
       if (view !== 'verify') setAuthLoading(false);

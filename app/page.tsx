@@ -4,9 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Leaf, ArrowRight, Eye, EyeOff, Mail, CheckCircle2 } from 'lucide-react';
-import { auth, db } from '@/lib/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signOut, updateProfile, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { supabase } from '@/lib/supabase';
 import { useSurveyStore } from '@/lib/store';
 
 type AuthFlow = 'login' | 'register' | 'verify' | 'forgot' | 'reset-sent';
@@ -28,95 +26,102 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  // Discard offline auto-login. On refresh or new tab of the sign-in page, sign them out.
+  // Check session and only redirect after checking for reload/new session signout
   useEffect(() => {
-    let shouldLogOutAndRedirect = false;
-    if (typeof sessionStorage !== 'undefined') {
-      if (!sessionStorage.getItem('in_session')) {
-        sessionStorage.setItem('in_session', 'true');
-        shouldLogOutAndRedirect = true;
-      }
-    }
-    if (typeof performance !== 'undefined') {
-      const navEntries = performance.getEntriesByType('navigation');
-      if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
-        shouldLogOutAndRedirect = true;
-      }
-    }
+    let subscription: any = null;
 
-    if (shouldLogOutAndRedirect) {
-      const handleSyncAndLogOut = async () => {
+    const init = async () => {
+      let shouldLogOutAndRedirect = false;
+      if (typeof sessionStorage !== 'undefined') {
+        if (!sessionStorage.getItem('in_session')) {
+          sessionStorage.setItem('in_session', 'true');
+          shouldLogOutAndRedirect = true;
+        }
+      }
+      if (typeof performance !== 'undefined') {
+        const navEntries = performance.getEntriesByType('navigation');
+        if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
+          shouldLogOutAndRedirect = true;
+        }
+      }
+
+      if (shouldLogOutAndRedirect) {
         try {
-          const { db } = await import('@/lib/firebase');
-          await auth.authStateReady();
-          const user = auth.currentUser;
+          const { data: { session } } = await supabase.auth.getSession();
+          const user = session?.user;
           if (user) {
             const state = useSurveyStore.getState();
             const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
             if (pendingSurveys.length > 0) {
-              const { writeBatch, doc } = await import('firebase/firestore');
-              const batch = writeBatch(db);
-              pendingSurveys.forEach(survey => {
-                const docRef = doc(db, "surveys", survey.id);
-                batch.set(docRef, { ...survey, userId: user.uid, syncStatus: "Synced", updatedAt: new Date().toISOString() }, { merge: true });
-              });
-              await batch.commit();
-              pendingSurveys.forEach(survey => {
-                state.updateSurvey(survey.id, { status: "Synced" });
-              });
+              const updates = pendingSurveys.map(survey => ({
+                id: survey.id,
+                user_id: user.id,
+                device_id: state.identity.local_device_id,
+                survey_data: survey,
+                sync_status: "Synced",
+                updated_at: new Date().toISOString()
+              }));
+              
+              const { error: dbError } = await supabase.from('surveys').upsert(updates);
+              if (!dbError) {
+                pendingSurveys.forEach(survey => {
+                  state.updateSurvey(survey.id, { status: "Synced" });
+                });
+              }
             }
           }
-          await auth.signOut();
+          await supabase.auth.signOut();
         } catch (e) {
           console.error(e);
         } finally {
           useSurveyStore.getState().setIdentity({ isGuest: false });
         }
-      };
-      handleSyncAndLogOut();
-    }
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      // Only auto-redirect if they are verified and in the login view
-      // This prevents redirecting immediately upon signup before they can verify
-      if (user && user.emailVerified && view === 'login') {
-        const state = useSurveyStore.getState();
-        const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
-        if (pendingSurveys.length > 0) {
-          try {
-            const { writeBatch, doc } = await import('firebase/firestore');
-            const batch = writeBatch(db);
-            pendingSurveys.forEach(survey => {
-              const docRef = doc(db, "surveys", survey.id);
-              batch.set(docRef, {
-                ...survey,
-                userId: user.uid,
-                deviceId: state.identity.local_device_id,
-                syncStatus: "Synced",
-                updatedAt: new Date().toISOString()
-              }, { merge: true });
-            });
-            await batch.commit();
-            pendingSurveys.forEach(survey => {
-              state.updateSurvey(survey.id, { status: "Synced" });
-            });
-          } catch (e) {
-            console.error(e);
-          }
-        }
-        
-        if (state.identity.isGuest) {
-          state.setIdentity({ isGuest: false });
-        }
-        router.push('/dashboard');
-      } else if (!user && view === 'login') {
-        // Just stay on login view
       }
-    });
 
-    return () => unsubscribe();
+      // Now monitor auth state
+      const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+        // Only auto-redirect if they are in the login view
+        if (session?.user && view === 'login') {
+          const state = useSurveyStore.getState();
+          const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
+          if (pendingSurveys.length > 0) {
+            try {
+              const updates = pendingSurveys.map(survey => ({
+                  id: survey.id,
+                  user_id: session.user.id,
+                  device_id: state.identity.local_device_id,
+                  survey_data: survey,
+                  sync_status: "Synced",
+                  updated_at: new Date().toISOString()
+              }));
+
+              const { error: dbError } = await supabase.from('surveys').upsert(updates);
+              if (!dbError) {
+                pendingSurveys.forEach(survey => {
+                  state.updateSurvey(survey.id, { status: "Synced" });
+                });
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          }
+          
+          if (state.identity.isGuest) {
+            state.setIdentity({ isGuest: false });
+          }
+          router.push('/dashboard');
+        }
+      });
+      subscription = data.subscription;
+    };
+
+    init();
+
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, [router, view]);
 
   const handleSignIn = async (e: React.FormEvent) => {
@@ -127,37 +132,36 @@ export default function Home() {
     setError(null);
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      
-      if (!userCredential.user.emailVerified) {
-        // If not verified, sign them out and show verification view
-        await sendEmailVerification(userCredential.user);
-        await signOut(auth);
-        setView('verify');
-        setLoading(false);
-        return;
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        throw authError;
       }
 
+      const user = data.user;
+      
       const state = useSurveyStore.getState();
       const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
       if (pendingSurveys.length > 0) {
         try {
-          const { writeBatch, doc } = await import('firebase/firestore');
-          const batch = writeBatch(db);
-          pendingSurveys.forEach(survey => {
-            const docRef = doc(db, "surveys", survey.id);
-            batch.set(docRef, {
-              ...survey,
-              userId: userCredential.user.uid,
-              deviceId: state.identity.local_device_id,
-              syncStatus: "Synced",
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
-          });
-          await batch.commit();
-          pendingSurveys.forEach(survey => {
-            state.updateSurvey(survey.id, { status: "Synced" });
-          });
+          const updates = pendingSurveys.map(survey => ({
+              id: survey.id,
+              user_id: user?.id,
+              device_id: state.identity.local_device_id,
+              survey_data: survey,
+              sync_status: "Synced",
+              updated_at: new Date().toISOString()
+          }));
+
+          const { error: dbError } = await supabase.from('surveys').upsert(updates);
+          if (!dbError) {
+            pendingSurveys.forEach(survey => {
+              state.updateSurvey(survey.id, { status: "Synced" });
+            });
+          }
         } catch (e) {
           console.error(e);
         }
@@ -169,14 +173,10 @@ export default function Home() {
 
       router.push('/dashboard');
     } catch (err: any) {
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+      if (err.message === 'Invalid login credentials') {
         setError("Password or Email Incorrect");
       } else {
-        let msg = err.message;
-        if (msg.includes('Firebase:')) {
-          msg = msg.replace(/Firebase:\s*/, '').replace(/\s*\(auth[^)]+\)\.?/, '');
-        }
-        setError(msg);
+        setError(err.message);
       }
       setLoading(false);
     }
@@ -193,45 +193,31 @@ export default function Home() {
     setError(null);
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      // Update display name with firstName and lastName
-      await updateProfile(user, {
-        displayName: `${firstName} ${lastName}`.trim()
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+            title,
+            role,
+            institution
+          }
+        }
       });
 
-      // Optionally, you can save the user data to firestore here:
-      /*
-      await setDoc(doc(db, "users", user.uid), {
-        title,
-        firstName,
-        lastName,
-        role,
-        institution,
-        email
-      });
-      */
+      if (signUpError) {
+        throw signUpError;
+      }
 
-      // Send verification email
-      await sendEmailVerification(user);
-      
-      // Sign out immediately so they have to verify
-      await signOut(auth);
-      
       setView('verify');
       setLoading(false);
     } catch (err: any) {
-      if (err.code === 'auth/email-already-in-use') {
+      if (err.message.includes('already registered')) {
         setError("User already exists, Sign In?");
       } else {
-        let msg = err.message;
-        if (err.code === 'auth/weak-password') {
-          msg = "Password should be at least 6 characters.";
-        } else if (msg.includes('Firebase:')) {
-          msg = msg.replace(/Firebase:\s*/, '').replace(/\s*\(auth[^)]+\)\.?/, '');
-        }
-        setError(msg);
+        setError(err.message);
       }
       setLoading(false);
     }
@@ -248,18 +234,16 @@ export default function Home() {
     setError(null);
     
     try {
-      await sendPasswordResetEmail(auth, email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
       setView('reset-sent');
     } catch (err: any) {
-      let msg = err.message;
-      if (msg.includes('Firebase:')) {
-        msg = msg.replace(/Firebase:\s*/, '').replace(/\s*\(auth[^)]+\)\.?/, '');
-      }
-      setError(msg);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="min-h-[100dvh] flex flex-col md:flex-row bg-[#FDFCF8] font-sans">
@@ -401,7 +385,7 @@ export default function Home() {
           {(view === 'login' || view === 'register') && (
             <div>
               <h2 className="text-3xl font-semibold text-emerald-950 tracking-tight mb-2">
-                {view === 'register' ? 'Welcome' : `Welcome${auth.currentUser?.displayName ? `, ${auth.currentUser.displayName.split(' ')[0]}` : ''}`}
+                {view === 'register' ? 'Welcome' : 'Welcome back'}
               </h2>
               <p className="text-slate-500 font-medium mb-8">
                 {view === 'register' ? 'Register for a researcher account' : 'Sign in to sync your field data'}

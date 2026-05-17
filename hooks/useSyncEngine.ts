@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSurveyStore } from "@/lib/store";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
-import { doc, setDoc, writeBatch, collection, getDocs, query, where } from "firebase/firestore";
+import { supabase } from "@/lib/supabase";
 
 export function useSyncEngine() {
   const [syncing, setSyncing] = useState(false);
@@ -17,20 +15,21 @@ export function useSyncEngine() {
     setSyncing(true);
     setError(null);
     try {
-      const batch = writeBatch(db);
-      
-      pendingSurveys.forEach(survey => {
-        const docRef = doc(db, "surveys", survey.id);
-        batch.set(docRef, {
-          ...survey,
-          userId: uid,
-          deviceId: state.identity.local_device_id,
-          syncStatus: "Synced",
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-      });
+      const updates = pendingSurveys.map(survey => ({
+        id: survey.id,
+        user_id: uid,
+        device_id: state.identity.local_device_id,
+        survey_data: survey,
+        sync_status: "Synced",
+        updated_at: new Date().toISOString()
+      }));
 
-      await batch.commit();
+      // In Supabase, you can do an upsert
+      const { error: dbError } = await supabase
+        .from('surveys')
+        .upsert(updates);
+
+      if (dbError) throw new Error(dbError.message);
 
       // Update local state to synced
       pendingSurveys.forEach(survey => {
@@ -46,14 +45,14 @@ export function useSyncEngine() {
 
   // We should listen to auth state changes to detect if we have upgraded from guest to user
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (user) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
         // user is logged in
         // if they were a guest previously, we migrate them.
         if (state.identity.isGuest) {
           state.setIdentity({ isGuest: false });
           // Force a sync of all pending local data
-          await syncData(user.uid);
+          await syncData(session.user.id);
         }
       } else {
         // user is logged out, mark as guest if not already
@@ -62,7 +61,10 @@ export function useSyncEngine() {
         }
       }
     });
-    return () => unsub();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [state, syncData]);
 
   // Setup periodic sync when online and logged in
@@ -71,8 +73,8 @@ export function useSyncEngine() {
       if (!navigator.onLine) return;
       if (state.identity.isGuest) return;
       
-      const user = auth.currentUser;
-      if (!user) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
 
       const prefs = state.preferences;
       const connection = (navigator as any).connection;
@@ -90,7 +92,7 @@ export function useSyncEngine() {
       if (!connection && (prefs.autoSync || prefs.autoSyncMobile)) shouldSync = true;
       
       if (shouldSync) {
-         await syncData(user.uid);
+         await syncData(session.user.id);
       }
     };
 

@@ -7,6 +7,7 @@ import { Home, Compass, Map as MapIcon, BarChart3, Settings, Leaf, PlusCircle, T
 import { cn } from '@/lib/utils';
 import { useSurveyStore } from '@/lib/store';
 import { useSyncEngine } from '@/hooks/useSyncEngine';
+import { supabase } from '@/lib/supabase';
 
 const navSections = [
   {
@@ -92,26 +93,30 @@ export function AppLayout({ children }: { children: ReactNode }) {
     if (shouldLogOutAndRedirect) {
       const handleSyncAndLogOut = async () => {
         try {
-          const { auth, db } = await import('@/lib/firebase');
-          await auth.authStateReady();
-          const user = auth.currentUser;
+          const { data: { session } } = await supabase.auth.getSession();
+          const user = session?.user;
           if (user) {
             const state = useSurveyStore.getState();
             const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
             if (pendingSurveys.length > 0) {
-              const { writeBatch, doc } = await import('firebase/firestore');
-              const batch = writeBatch(db);
-              pendingSurveys.forEach(survey => {
-                const docRef = doc(db, "surveys", survey.id);
-                batch.set(docRef, { ...survey, userId: user.uid, syncStatus: "Synced", updatedAt: new Date().toISOString() }, { merge: true });
-              });
-              await batch.commit();
-              pendingSurveys.forEach(survey => {
-                state.updateSurvey(survey.id, { status: "Synced" });
-              });
+              const updates = pendingSurveys.map(survey => ({
+                id: survey.id,
+                user_id: user.id,
+                device_id: state.identity.local_device_id,
+                survey_data: survey,
+                sync_status: "Synced",
+                updated_at: new Date().toISOString()
+              }));
+              
+              const { error: dbError } = await supabase.from('surveys').upsert(updates);
+              if (!dbError) {
+                pendingSurveys.forEach(survey => {
+                  state.updateSurvey(survey.id, { status: "Synced" });
+                });
+              }
             }
           }
-          await auth.signOut();
+          await supabase.auth.signOut();
         } catch (e) {
           console.error(e);
         } finally {
@@ -225,26 +230,31 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <button 
             onClick={async () => {
               try {
-                const { auth, db } = await import('@/lib/firebase');
-                const user = auth.currentUser;
+                const { data: { session } } = await supabase.auth.getSession();
+                const user = session?.user;
                 if (user) {
                   const state = useSurveyStore.getState();
                   const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
                   if (pendingSurveys.length > 0) {
-                    const { writeBatch, doc } = await import('firebase/firestore');
-                    const batch = writeBatch(db);
-                    pendingSurveys.forEach(survey => {
-                      const docRef = doc(db, "surveys", survey.id);
-                      batch.set(docRef, { ...survey, userId: user.uid, syncStatus: "Synced" }, { merge: true });
-                    });
-                    await batch.commit();
-                    pendingSurveys.forEach(survey => {
-                      state.updateSurvey(survey.id, { status: "Synced" });
-                    });
+                    const updates = pendingSurveys.map(survey => ({
+                      id: survey.id,
+                      user_id: user.id,
+                      device_id: state.identity.local_device_id,
+                      survey_data: survey,
+                      sync_status: "Synced",
+                      updated_at: new Date().toISOString()
+                    }));
+                    
+                    const { error: dbError } = await supabase.from('surveys').upsert(updates);
+                    if (!dbError) {
+                      pendingSurveys.forEach(survey => {
+                        state.updateSurvey(survey.id, { status: "Synced" });
+                      });
+                    }
                   }
                 }
                 useSurveyStore.getState().setIdentity({ isGuest: false });
-                await auth.signOut();
+                await supabase.auth.signOut();
               } catch (e) { console.error(e); }
               window.location.href = '/';
             }}
@@ -301,26 +311,31 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <button 
               onClick={async () => {
                 try {
-                  const { auth, db } = await import('@/lib/firebase');
-                  const user = auth.currentUser;
+                  const { data: { session } } = await supabase.auth.getSession();
+                  const user = session?.user;
                   if (user) {
                     const state = useSurveyStore.getState();
                     const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
                     if (pendingSurveys.length > 0) {
-                      const { writeBatch, doc } = await import('firebase/firestore');
-                      const batch = writeBatch(db);
-                      pendingSurveys.forEach(survey => {
-                        const docRef = doc(db, "surveys", survey.id);
-                        batch.set(docRef, { ...survey, userId: user.uid, syncStatus: "Synced" }, { merge: true });
-                      });
-                      await batch.commit();
-                      pendingSurveys.forEach(survey => {
-                        state.updateSurvey(survey.id, { status: "Synced" });
-                      });
+                      const updates = pendingSurveys.map(survey => ({
+                        id: survey.id,
+                        user_id: user.id,
+                        device_id: state.identity.local_device_id,
+                        survey_data: survey,
+                        sync_status: "Synced",
+                        updated_at: new Date().toISOString()
+                      }));
+                      
+                      const { error: dbError } = await supabase.from('surveys').upsert(updates);
+                      if (!dbError) {
+                        pendingSurveys.forEach(survey => {
+                          state.updateSurvey(survey.id, { status: "Synced" });
+                        });
+                      }
                     }
                   }
                   useSurveyStore.getState().setIdentity({ isGuest: false });
-                  await auth.signOut();
+                  await supabase.auth.signOut();
                 } catch (e) { console.error(e); }
                 window.location.href = '/';
               }}
@@ -431,26 +446,31 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 <button 
                   onClick={async () => {
                     try {
-                      const { auth, db } = await import('@/lib/firebase');
-                      const user = auth.currentUser;
+                      const { data: { session } } = await supabase.auth.getSession();
+                      const user = session?.user;
                       if (user) {
                         const state = useSurveyStore.getState();
                         const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
                         if (pendingSurveys.length > 0) {
-                          const { writeBatch, doc } = await import('firebase/firestore');
-                          const batch = writeBatch(db);
-                          pendingSurveys.forEach(survey => {
-                            const docRef = doc(db, "surveys", survey.id);
-                            batch.set(docRef, { ...survey, userId: user.uid, syncStatus: "Synced" }, { merge: true });
-                          });
-                          await batch.commit();
-                          pendingSurveys.forEach(survey => {
-                            state.updateSurvey(survey.id, { status: "Synced" });
-                          });
+                          const updates = pendingSurveys.map(survey => ({
+                            id: survey.id,
+                            user_id: user.id,
+                            device_id: state.identity.local_device_id,
+                            survey_data: survey,
+                            sync_status: "Synced",
+                            updated_at: new Date().toISOString()
+                          }));
+                          
+                          const { error: dbError } = await supabase.from('surveys').upsert(updates);
+                          if (!dbError) {
+                            pendingSurveys.forEach(survey => {
+                              state.updateSurvey(survey.id, { status: "Synced" });
+                            });
+                          }
                         }
                       }
                       useSurveyStore.getState().setIdentity({ isGuest: false });
-                      await auth.signOut();
+                      await supabase.auth.signOut();
                     } catch (e) { console.error(e); }
                     window.location.href = '/';
                   }}
