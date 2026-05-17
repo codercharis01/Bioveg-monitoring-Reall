@@ -9,6 +9,8 @@ import { useSurveyStore } from '@/lib/store';
 import { useSyncEngine } from '@/hooks/useSyncEngine';
 import { supabase } from '@/lib/supabase';
 
+import { formatDistanceToNow } from 'date-fns';
+
 const navSections = [
   {
     title: 'Overview',
@@ -53,11 +55,20 @@ const mobileNavItems = [
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const surveys = useSurveyStore(state => state.surveys);
   const profile = useSurveyStore(state => state.profile);
   const identity = useSurveyStore(state => state.identity);
+  const lastSyncedAt = useSurveyStore(state => state.lastSyncedAt);
   const pInitials = profile?.firstName?.[0]?.toUpperCase() || 'U';
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   useSyncEngine();
 
@@ -74,19 +85,22 @@ export function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     let shouldLogOutAndRedirect = false;
     
-    // Check if it's a completely new session tab
-    if (typeof sessionStorage !== 'undefined') {
-      if (!sessionStorage.getItem('in_session')) {
-        sessionStorage.setItem('in_session', 'true');
-        shouldLogOutAndRedirect = true;
+    if (typeof window !== 'undefined' && !(window as any)._hasCheckedNavigation) {
+      (window as any)._hasCheckedNavigation = true;
+      // Check if it's a completely new session tab
+      if (typeof sessionStorage !== 'undefined') {
+        if (!sessionStorage.getItem('in_session')) {
+          sessionStorage.setItem('in_session', 'true');
+          shouldLogOutAndRedirect = true;
+        }
       }
-    }
-    
-    // Check if it's a reload
-    if (typeof performance !== 'undefined') {
-      const navEntries = performance.getEntriesByType('navigation');
-      if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
-        shouldLogOutAndRedirect = true;
+      
+      // Check if it's a reload
+      if (typeof performance !== 'undefined') {
+        const navEntries = performance.getEntriesByType('navigation');
+        if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
+          shouldLogOutAndRedirect = true;
+        }
       }
     }
     
@@ -113,6 +127,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 pendingSurveys.forEach(survey => {
                   state.updateSurvey(survey.id, { status: "Synced" });
                 });
+                state.setLastSyncedAt(Date.now());
               }
             }
           }
@@ -166,7 +181,17 @@ export function AppLayout({ children }: { children: ReactNode }) {
   };
 
   const showBack = pathname !== '/dashboard' && pathname !== '/';
-  const router = useRouter();
+
+  if (isLoggingOut) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-[#FDFCF8] z-50">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-forest mb-4"></div>
+          <p className="text-moss font-medium">Logging out...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 flex bg-cream text-charcoal font-sans overflow-hidden">
@@ -229,6 +254,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </div>
           <button 
             onClick={async () => {
+              setIsLoggingOut(true);
               try {
                 const { data: { session } } = await supabase.auth.getSession();
                 const user = session?.user;
@@ -250,6 +276,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                       pendingSurveys.forEach(survey => {
                         state.updateSurvey(survey.id, { status: "Synced" });
                       });
+                      state.setLastSyncedAt(Date.now());
                     }
                   }
                 }
@@ -302,7 +329,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-sage-pale rounded-full text-[12px] font-medium text-forest-mid border border-moss/20">
               <div className="w-1.5 h-1.5 rounded-full bg-moss" />
-              Synced 2m ago
+              {lastSyncedAt ? `Synced ${formatDistanceToNow(lastSyncedAt)} ago` : 'Waiting to sync...'}
             </div>
             <Link href="/surveys/new" className="flex items-center gap-1.5 px-3.5 py-1.5 bg-forest hover:bg-forest-mid text-white rounded-md text-[13px] font-medium transition-colors">
               <PlusCircle className="w-[15px] h-[15px]" />
@@ -310,6 +337,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </Link>
             <button 
               onClick={async () => {
+                setIsLoggingOut(true);
                 try {
                   const { data: { session } } = await supabase.auth.getSession();
                   const user = session?.user;
@@ -331,6 +359,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                         pendingSurveys.forEach(survey => {
                           state.updateSurvey(survey.id, { status: "Synced" });
                         });
+                        state.setLastSyncedAt(Date.now());
                       }
                     }
                   }
@@ -445,6 +474,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 </Link>
                 <button 
                   onClick={async () => {
+                    setIsLoggingOut(true);
                     try {
                       const { data: { session } } = await supabase.auth.getSession();
                       const user = session?.user;
@@ -466,6 +496,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                             pendingSurveys.forEach(survey => {
                               state.updateSurvey(survey.id, { status: "Synced" });
                             });
+                            state.setLastSyncedAt(Date.now());
                           }
                         }
                       }

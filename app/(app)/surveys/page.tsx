@@ -1,24 +1,41 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Upload, Pencil } from 'lucide-react';
 import { useSurveyStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
+import { formatDistanceToNow } from 'date-fns';
+
 export default function SurveysList() {
   const router = useRouter();
   const surveys = useSurveyStore(state => state.surveys) || [];
+  const lastSyncedAt = useSurveyStore(state => state.lastSyncedAt);
   const deleteSurvey = useSurveyStore(state => state.deleteSurvey);
   
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [, setTick] = useState(0);
 
-  const filteredSurveys = surveys.filter(s => 
-    (s?.projectName || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
-    (s?.siteName || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const filteredSurveys = surveys
+    .filter(s => 
+      (s?.projectName || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (s?.siteName || '').toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (a.id.startsWith('mock-')) return 1;
+      if (b.id.startsWith('mock-')) return -1;
+      const timeA = !isNaN(Number(a.id)) ? Number(a.id) : new Date(a.date).getTime() || 0;
+      const timeB = !isNaN(Number(b.id)) ? Number(b.id) : new Date(b.date).getTime() || 0;
+      return timeB - timeA;
+    });
 
   const toggleMenu = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
@@ -72,7 +89,7 @@ export default function SurveysList() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-mint/50 text-forest rounded-full text-[12px] font-medium border border-forest/10 mr-2">
             <div className="w-1.5 h-1.5 rounded-full bg-forest animate-pulse"></div>
-            Synced 2m ago
+            {lastSyncedAt ? `Synced ${formatDistanceToNow(lastSyncedAt)} ago` : 'Waiting to sync...'}
           </div>
           
           <div className="relative">

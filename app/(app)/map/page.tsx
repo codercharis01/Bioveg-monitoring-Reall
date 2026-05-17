@@ -17,7 +17,7 @@ export default function MapView() {
   const preferences = useSurveyStore(state => state.preferences);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>('');
-  const [programmaticUpdate, setProgrammaticUpdate] = useState(false);
+  const [programmaticUpdate, setProgrammaticUpdate] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -63,13 +63,12 @@ export default function MapView() {
   const handleGetLocation = () => {
     if (!selectedSurveyId) return alert('Please select a survey first.');
     if (navigator.geolocation) {
-      setProgrammaticUpdate(true);
+      setProgrammaticUpdate(Date.now());
       navigator.geolocation.getCurrentPosition((position) => {
         updateSurvey(selectedSurveyId, {
           lat: position.coords.latitude,
           lng: position.coords.longitude
         });
-        setTimeout(() => setProgrammaticUpdate(false), 500);
       }, undefined, { enableHighAccuracy: preferences.highAccuracyMode });
     }
   };

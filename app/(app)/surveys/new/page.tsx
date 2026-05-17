@@ -42,7 +42,7 @@ export default function NewSurvey() {
   const clearDraft = useSurveyStore(state => state.clearDraft);
   
   const [currentStep, setCurrentStep] = useState(1);
-  const [programmaticUpdate, setProgrammaticUpdate] = useState(false);
+  const [programmaticUpdate, setProgrammaticUpdate] = useState(0);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [formData, setFormData] = useState({
     projectName: draftSurvey?.projectName || '',
@@ -51,7 +51,7 @@ export default function NewSurvey() {
     researcherName: draftSurvey?.researcherName || `${useSurveyStore.getState().profile?.firstName || ''} ${useSurveyStore.getState().profile?.lastName || ''}`.trim(),
     date: draftSurvey?.date ? new Date(draftSurvey.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
     ecosystemType: draftSurvey?.ecosystemType || 'Tropical Rainforest',
-    numQuadrats: draftSurvey?.numQuadrats || 5,
+    numQuadrats: draftSurvey?.numQuadrats || 50,
     quadratSize: draftSurvey?.quadratSize || '10 × 10 m (100 m²)',
     transectLength: draftSurvey?.transectLength || 500,
     samplingInterval: draftSurvey?.samplingInterval || 100,
@@ -108,13 +108,12 @@ export default function NewSurvey() {
         const latitude = position.coords.latitude.toFixed(6);
         const longitude = position.coords.longitude.toFixed(6);
 
-        setProgrammaticUpdate(true);
+        setProgrammaticUpdate(Date.now());
         setFormData(prev => ({
           ...prev,
           lat: latitude,
           lng: longitude
         }));
-        setTimeout(() => setProgrammaticUpdate(false), 500);
 
         try {
           const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
@@ -140,13 +139,12 @@ export default function NewSurvey() {
       const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(formData.sampleSite)}&format=json&limit=1`);
       const data = await resp.json();
       if (data && data.length > 0) {
-        setProgrammaticUpdate(true);
+        setProgrammaticUpdate(Date.now());
         setFormData(prev => ({
           ...prev,
           lat: parseFloat(data[0].lat).toFixed(6),
           lng: parseFloat(data[0].lon).toFixed(6)
         }));
-        setTimeout(() => setProgrammaticUpdate(false), 500);
       }
     } catch (e) {
       console.error('Failed to geocode site:', e);
@@ -315,8 +313,8 @@ export default function NewSurvey() {
                     type="number" 
                     value={formData.numQuadrats}
                     min={1}
-                    max={50}
-                    onChange={e => setFormData({...formData, numQuadrats: Math.min(50, parseInt(e.target.value) || 1)})}
+                    max={500}
+                    onChange={e => setFormData({...formData, numQuadrats: Math.min(500, parseInt(e.target.value) || 1)})}
                     className="w-full px-3.5 py-2.5 rounded-lg border border-forest/20 focus:border-moss focus:ring-[3px] focus:ring-sage/20 transition-all text-[13.5px] text-charcoal bg-[#faf6f0] focus:bg-white outline-none" 
                   />
                 </div>
@@ -408,7 +406,10 @@ export default function NewSurvey() {
                     type="text" 
                     placeholder="e.g. 1.3521"
                     value={formData.lat}
-                    onChange={e => setFormData({...formData, lat: e.target.value})}
+                    onChange={e => {
+                      setFormData({...formData, lat: e.target.value});
+                      setProgrammaticUpdate(Date.now());
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-lg border border-forest/20 focus:border-moss focus:ring-[3px] focus:ring-sage/20 transition-all text-[13.5px] text-charcoal bg-[#faf6f0] focus:bg-white outline-none font-mono" 
                   />
                 </div>
@@ -418,7 +419,10 @@ export default function NewSurvey() {
                     type="text" 
                     placeholder="e.g. 110.4396"
                     value={formData.lng}
-                    onChange={e => setFormData({...formData, lng: e.target.value})}
+                    onChange={e => {
+                      setFormData({...formData, lng: e.target.value});
+                      setProgrammaticUpdate(Date.now());
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-lg border border-forest/20 focus:border-moss focus:ring-[3px] focus:ring-sage/20 transition-all text-[13.5px] text-charcoal bg-[#faf6f0] focus:bg-white outline-none font-mono" 
                   />
                 </div>

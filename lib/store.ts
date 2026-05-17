@@ -63,6 +63,7 @@ export interface SurveyState {
   preferences: AppPreferences;
   identity: UserIdentity;
   draftSurvey?: Partial<SurveySession>;
+  lastSyncedAt?: number;
   
   // Actions
   initGuestIdentity: () => void;
@@ -78,6 +79,7 @@ export interface SurveyState {
   deleteSpecies: (surveyId: string, speciesId: string) => void;
   updateProfile: (data: Partial<UserProfile>) => void;
   updatePreferences: (data: Partial<AppPreferences>) => void;
+  setLastSyncedAt: (timestamp: number) => void;
 }
 
 export const useSurveyStore = create<SurveyState>()(
@@ -140,60 +142,6 @@ export const useSurveyStore = create<SurveyState>()(
           quadrats: [0, 4, 0, 1, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
           stratum: 'Sub-canopy',
           notes: 'Co-dominant'
-        }
-      ]
-    },
-    {
-      id: 'mock-2',
-      projectName: 'Valley Delta Flora',
-      siteName: 'Wetland Reserve',
-      ecosystemType: 'Wetland',
-      vegetationType: 'Marsh Grass',
-      sampleSite: 'Delta Entrance',
-      samplingMethod: 'Random Sampling',
-      quadratSize: '1 × 1 m (1 m²)',
-      transectLength: 50,
-      samplingInterval: 5,
-      researcherName: 'Dr. Jane Doe',
-      date: 'Oct 18, 2026',
-      status: 'Synced',
-      numQuadrats: 8,
-      lat: -0.5,
-      lng: 111.0,
-      speciesList: [
-        {
-          id: 's-3',
-          name: 'Typha latifolia',
-          family: 'Typhaceae',
-          quadrats: [5, 4, 6, 2, 0, 0, 0, 0],
-          stratum: 'Understory',
-          notes: 'Pioneer'
-        }
-      ]
-    },
-    {
-      id: 'mock-3',
-      projectName: 'Coastal Dune Study',
-      siteName: 'Sector 7G',
-      ecosystemType: 'Coastal',
-      vegetationType: 'Dune Grass',
-      sampleSite: 'Sector 7G Alpha',
-      samplingMethod: 'Line Transect',
-      quadratSize: '2 × 2 m (4 m²)',
-      transectLength: 200,
-      samplingInterval: 20,
-      researcherName: 'Dr. Jane Doe',
-      date: 'Oct 12, 2026',
-      status: 'Synced',
-      numQuadrats: 5,
-      speciesList: [
-        {
-          id: 's-4',
-          name: 'Ammophila arenaria',
-          family: 'Poaceae',
-          quadrats: [10, 12, 15, 8, 4],
-          stratum: 'Ground layer',
-          notes: 'emergent'
         }
       ]
     }
@@ -334,7 +282,9 @@ export const useSurveyStore = create<SurveyState>()(
 
   updatePreferences: (data) => set((state) => ({
     preferences: { ...state.preferences, ...data }
-  }))
+  })),
+  
+  setLastSyncedAt: (timestamp) => set({ lastSyncedAt: timestamp })
 }),
 {
   name: 'ecosurvey-storage-v4',

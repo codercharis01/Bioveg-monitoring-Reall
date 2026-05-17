@@ -85,6 +85,7 @@ export default function SyncPage() {
               pendingSurveys.forEach(survey => {
                 state.updateSurvey(survey.id, { status: "Synced" });
               });
+              state.setLastSyncedAt(Date.now());
             }
           } catch (e) {
             console.error(e);
@@ -113,7 +114,9 @@ export default function SyncPage() {
         setView('verify');
       } else if (view === 'forgot') {
         if (!email) throw new Error("Please enter your email address.");
-        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard`,
+        });
         if (error) throw error;
         setView('reset-sent');
       }

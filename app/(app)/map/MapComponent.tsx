@@ -10,7 +10,7 @@ import { Folder } from 'lucide-react';
 
 type MapComponentProps = {
   selectedSurveyId?: string;
-  programmaticUpdate?: boolean;
+  programmaticUpdate?: number;
   onMapClick?: (lat: number, lng: number) => void;
 };
 
@@ -23,10 +23,10 @@ function MapClickHandler({ setPos }: { setPos: (lat: number, lng: number) => voi
   return null;
 }
 
-function MapRecentering({ lat, lng, programmaticUpdate }: { lat?: number, lng?: number, programmaticUpdate?: boolean }) {
+function MapRecentering({ lat, lng, programmaticUpdate }: { lat?: number, lng?: number, programmaticUpdate?: number }) {
   const map = useMap();
   useEffect(() => {
-    if (lat !== undefined && lng !== undefined && programmaticUpdate) {
+    if (lat !== undefined && lng !== undefined && programmaticUpdate && programmaticUpdate > 0) {
       map.flyTo([lat, lng], 16);
     }
   }, [lat, lng, programmaticUpdate, map]);
@@ -61,12 +61,14 @@ export default function MapComponent({ selectedSurveyId, programmaticUpdate, onM
       <MapContainer 
         center={defaultCenter} 
         zoom={7} 
+        maxZoom={19}
         scrollWheelZoom={true}
         style={{ height: '100%', width: '100%', zIndex: 1 }}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={19}
         />
         {onMapClick && <MapClickHandler setPos={onMapClick} />}
         {selectedSurvey && <MapRecentering lat={selectedSurvey.lat} lng={selectedSurvey.lng} programmaticUpdate={programmaticUpdate} />}

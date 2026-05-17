@@ -24,10 +24,10 @@ function MapClickHandler({ setPos }: { setPos: (lat: string, lng: string) => voi
   return null;
 }
 
-function MapRecentering({ lat, lng, programmaticUpdate }: { lat: string, lng: string, programmaticUpdate: boolean }) {
+function MapRecentering({ lat, lng, programmaticUpdate }: { lat: string, lng: string, programmaticUpdate: number }) {
   const map = useMap();
   useEffect(() => {
-    if (lat && lng && programmaticUpdate) {
+    if (lat && lng && programmaticUpdate > 0) {
       map.flyTo([parseFloat(lat), parseFloat(lng)], 16);
     }
   }, [lat, lng, programmaticUpdate, map]);
@@ -38,7 +38,7 @@ interface NewSurveyMapProps {
   lat: string;
   lng: string;
   setPos: (lat: string, lng: string) => void;
-  programmaticUpdate: boolean;
+  programmaticUpdate: number;
 }
 
 export default function NewSurveyMap({ lat, lng, setPos, programmaticUpdate }: NewSurveyMapProps) {
@@ -50,12 +50,14 @@ export default function NewSurveyMap({ lat, lng, setPos, programmaticUpdate }: N
     <MapContainer 
       center={[centerLat, centerLng]} 
       zoom={11} 
+      maxZoom={19}
       scrollWheelZoom={true}
       style={{ height: '100%', width: '100%', zIndex: 1 }}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        maxZoom={19}
       />
       <MapClickHandler setPos={setPos} />
       <MapRecentering lat={lat} lng={lng} programmaticUpdate={programmaticUpdate} />

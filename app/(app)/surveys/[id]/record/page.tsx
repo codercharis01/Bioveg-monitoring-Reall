@@ -379,20 +379,33 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
                       <th className="px-5 py-3.5 text-[11px] font-semibold text-moss/60 uppercase tracking-widest">Species Name</th>
                       <th className="px-5 py-3.5 text-[11px] font-semibold text-moss/60 uppercase tracking-widest">Family</th>
                       <th className="px-5 py-3.5 text-[11px] font-semibold text-forest uppercase tracking-widest bg-mint/30 border-x border-forest/5 text-center">Total</th>
-                      {Array.from({ length: numQuadrats }).map((_, idx) => (
-                        <th key={`th-q${idx}`} className="px-4 py-3.5 text-[11px] font-semibold text-moss/60 uppercase tracking-widest text-center">Q{idx + 1}</th>
-                      ))}
+                      {(() => {
+                        const lastQuadratWithData = speciesList.reduce((maxIdx, species) => {
+                          const speciesLastIdx = species.quadrats.reduce((last, val, idx) => val > 0 ? idx : last, -1);
+                          return Math.max(maxIdx, speciesLastIdx);
+                        }, -1);
+                        const colsToDisplay = Math.max(1, lastQuadratWithData + 1);
+                        return Array.from({ length: colsToDisplay }).map((_, idx) => (
+                          <th key={`th-q${idx}`} className="px-4 py-3.5 text-[11px] font-semibold text-moss/60 uppercase tracking-widest text-center">Q{idx + 1}</th>
+                        ));
+                      })()}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-forest/5">
                     {speciesList.map((species) => {
                       const totalAbundance = species.quadrats.reduce((sum, val) => sum + val, 0);
+                      const lastQuadratWithData = speciesList.reduce((maxIdx, s) => {
+                        const speciesLastIdx = s.quadrats.reduce((last, v, idx) => v > 0 ? idx : last, -1);
+                        return Math.max(maxIdx, speciesLastIdx);
+                      }, -1);
+                      const colsToDisplay = Math.max(1, lastQuadratWithData + 1);
+                      
                       return (
                         <tr key={`row-${species.id}`} className="hover:bg-mint/30 transition-colors group">
                           <td className="px-5 py-4 font-semibold text-charcoal text-[13.5px]">{species.name}</td>
                           <td className="px-5 py-4 text-moss/70 text-[13px]">{species.family}</td>
                           <td className="px-5 py-4 bg-mint/10 group-hover:bg-mint/40 text-forest font-bold text-[14px] border-x border-forest/5 text-center transition-colors">{totalAbundance}</td>
-                          {species.quadrats.map((val, idx) => (
+                          {species.quadrats.slice(0, colsToDisplay).map((val, idx) => (
                             <td key={`cell-${species.id}-q${idx}`} className="px-4 py-4 text-center">
                               {val > 0 ? (
                                 <span className="font-bold text-forest text-[13.5px]">{val}</span>
@@ -430,6 +443,15 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
               </div>
             </div>
           )}
+
+          <div className="mt-8 flex justify-center pb-12">
+            <Link 
+              href={`/surveys/${surveyId}`}
+              className="inline-flex bg-forest hover:bg-forest-mid text-[14px] text-white px-8 py-3 rounded-xl transition-colors font-medium items-center shadow-sm"
+            >
+              Complete Config
+            </Link>
+          </div>
         </div>
       </div>
     </div>

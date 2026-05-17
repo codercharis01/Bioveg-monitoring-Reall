@@ -35,6 +35,7 @@ export function useSyncEngine() {
       pendingSurveys.forEach(survey => {
         state.updateSurvey(survey.id, { status: "Synced" });
       });
+      state.setLastSyncedAt(Date.now());
 
     } catch (err: any) {
       setError(err.message);

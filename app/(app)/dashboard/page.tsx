@@ -15,8 +15,10 @@ export default function Dashboard() {
   const profile = useSurveyStore(state => state.profile);
 
   const sortedSurveys = [...surveys].sort((a, b) => {
-    const timeA = parseInt(a.id) || new Date(a.date).getTime() || 0;
-    const timeB = parseInt(b.id) || new Date(b.date).getTime() || 0;
+    if (a.id.startsWith('mock-')) return 1;
+    if (b.id.startsWith('mock-')) return -1;
+    const timeA = !isNaN(Number(a.id)) ? Number(a.id) : new Date(a.date).getTime() || 0;
+    const timeB = !isNaN(Number(b.id)) ? Number(b.id) : new Date(b.date).getTime() || 0;
     return timeB - timeA;
   });
 

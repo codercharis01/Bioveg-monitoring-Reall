@@ -7,12 +7,13 @@ import { Leaf, ArrowRight, Eye, EyeOff, Mail, CheckCircle2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase';
 import { useSurveyStore } from '@/lib/store';
 
-type AuthFlow = 'login' | 'register' | 'verify' | 'forgot' | 'reset-sent';
+type AuthFlow = 'login' | 'register' | 'verify' | 'forgot' | 'reset-sent' | 'update-password';
 
 export default function Home() {
   const [view, setView] = useState<AuthFlow>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   
   // Registration specific fields
@@ -28,20 +29,39 @@ export default function Home() {
 
   // Check session and only redirect after checking for reload/new session signout
   useEffect(() => {
+    // Check hash for specific errors
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash) {
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const errorDesc = hashParams.get('error_description');
+        const hasAccessToken = hashParams.has('access_token');
+        if (errorDesc) {
+          setError(decodeURIComponent(errorDesc.replace(/\+/g, ' ')));
+          if (!hasAccessToken) {
+             window.history.replaceState(null, '', window.location.pathname);
+          }
+        }
+      }
+    }
+
     let subscription: any = null;
 
     const init = async () => {
       let shouldLogOutAndRedirect = false;
-      if (typeof sessionStorage !== 'undefined') {
-        if (!sessionStorage.getItem('in_session')) {
-          sessionStorage.setItem('in_session', 'true');
-          shouldLogOutAndRedirect = true;
+      if (typeof window !== 'undefined' && !(window as any)._hasCheckedNavigation) {
+        (window as any)._hasCheckedNavigation = true;
+        if (typeof sessionStorage !== 'undefined') {
+          if (!sessionStorage.getItem('in_session')) {
+            sessionStorage.setItem('in_session', 'true');
+            shouldLogOutAndRedirect = true;
+          }
         }
-      }
-      if (typeof performance !== 'undefined') {
-        const navEntries = performance.getEntriesByType('navigation');
-        if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
-          shouldLogOutAndRedirect = true;
+        if (typeof performance !== 'undefined') {
+          const navEntries = performance.getEntriesByType('navigation');
+          if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
+            shouldLogOutAndRedirect = true;
+          }
         }
       }
 
@@ -80,8 +100,13 @@ export default function Home() {
 
       // Now monitor auth state
       const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setView('update-password');
+          return;
+        }
+
         // Only auto-redirect if they are in the login view
-        if (session?.user && view === 'login') {
+        if (session?.user && (view === 'login' || view === 'verify' || view === 'update-password')) {
           const state = useSurveyStore.getState();
           const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
           if (pendingSurveys.length > 0) {
@@ -161,6 +186,7 @@ export default function Home() {
             pendingSurveys.forEach(survey => {
               state.updateSurvey(survey.id, { status: "Synced" });
             });
+            state.setLastSyncedAt(Date.now());
           }
         } catch (e) {
           console.error(e);
@@ -171,6 +197,7 @@ export default function Home() {
         state.setIdentity({ isGuest: false });
       }
 
+      setLoading(false);
       router.push('/dashboard');
     } catch (err: any) {
       if (err.message === 'Invalid login credentials') {
@@ -193,7 +220,7 @@ export default function Home() {
     setError(null);
 
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -211,8 +238,8 @@ export default function Home() {
         throw signUpError;
       }
 
-      setView('verify');
       setLoading(false);
+      setView('verify');
     } catch (err: any) {
       if (err.message.includes('already registered')) {
         setError("User already exists, Sign In?");
@@ -234,9 +261,47 @@ export default function Home() {
     setError(null);
     
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/`,
+      });
       if (error) throw error;
+      setLoading(false);
       setView('reset-sent');
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword) {
+      setError("Please enter a new password.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) throw error;
+      
+      // Usually updating password automatically signs you in
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        router.push('/dashboard');
+      } else {
+        setView('login');
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -291,13 +356,12 @@ export default function Home() {
               </h2>
               <p className="text-slate-600 mb-8 leading-relaxed">
                 We have sent you a verification email to <span className="font-semibold text-slate-900">{email}</span>. Verify it and log in.
-                <span className="block mt-4 text-sm bg-amber-50 text-amber-800 p-3 rounded-lg border border-amber-100 text-left">
-                  <strong className="block mb-1">Didn't receive it?</strong>
-                  Please check your spam/junk folder. It can sometimes take a few minutes to arrive.
-                </span>
               </p>
               <button 
-                onClick={() => setView('login')}
+                onClick={() => {
+                  setLoading(false);
+                  setView('login');
+                }}
                 className="w-full bg-emerald-800 hover:bg-emerald-900 text-white font-medium py-3 rounded-xl transition-colors shadow-sm"
               >
                 Return to Sign In
@@ -315,17 +379,67 @@ export default function Home() {
               </h2>
               <p className="text-slate-600 mb-8 leading-relaxed">
                 We sent you a password change link to <span className="font-semibold text-slate-900">{email}</span>.
-                <span className="block mt-4 text-sm bg-amber-50 text-amber-800 p-3 rounded-lg border border-amber-100 text-left">
-                  <strong className="block mb-1">Didn't receive it?</strong>
-                  Please check your spam/junk folder. It can sometimes take a few minutes to arrive.
-                </span>
               </p>
               <button 
-                onClick={() => setView('login')}
+                onClick={() => {
+                  setLoading(false);
+                  setView('login');
+                }}
                 className="w-full bg-emerald-800 hover:bg-emerald-900 text-white font-medium py-3 rounded-xl transition-colors shadow-sm"
               >
                 Sign In
               </button>
+            </div>
+          )}
+
+          {view === 'update-password' && (
+            <div>
+              <h2 className="text-3xl font-semibold text-emerald-950 tracking-tight mb-2">
+                Set New Password
+              </h2>
+              <p className="text-slate-500 font-medium mb-8">
+                Please enter your new password below.
+              </p>
+
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl text-sm font-medium">
+                  {error}
+                </div>
+              )}
+
+              <form className="space-y-4" onSubmit={handleUpdatePassword}>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">New Password</label>
+                  <div className="relative">
+                    <input 
+                      type={showPassword ? "text" : "password"} 
+                      required
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      placeholder="Enter new password" 
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-all text-slate-900 bg-white" 
+                    />
+                    <button 
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col space-y-3 mt-8">
+                  <button 
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-emerald-800 hover:bg-emerald-900 text-white font-medium py-3 rounded-xl transition-colors shadow-sm flex items-center justify-center space-x-2 disabled:opacity-70"
+                  >
+                    <span>{loading ? 'Updating...' : 'Update Password'}</span>
+                  </button>
+                </div>
+              </form>
             </div>
           )}
 
@@ -371,6 +485,7 @@ export default function Home() {
                     onClick={() => {
                       setView('login');
                       setError(null);
+                      setLoading(false);
                     }}
                     disabled={loading}
                     className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-xl transition-colors shadow-sm flex items-center justify-center disabled:opacity-70"
