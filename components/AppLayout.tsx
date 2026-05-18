@@ -58,9 +58,35 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true);
   const surveys = useSurveyStore(state => state.surveys);
   const profile = useSurveyStore(state => state.profile);
   const identity = useSurveyStore(state => state.identity);
+
+  useEffect(() => {
+    // Initial session check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        useSurveyStore.getState().setIdentity({ isGuest: false });
+      } else {
+        // Ensure guest identity is initialized if no session
+        useSurveyStore.getState().initGuestIdentity();
+      }
+      setLoadingAuth(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        useSurveyStore.getState().setIdentity({ isGuest: false });
+      } else if (_event === 'SIGNED_OUT') {
+        useSurveyStore.getState().resetStore();
+      }
+      setLoadingAuth(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const lastSyncedAt = useSurveyStore(state => state.lastSyncedAt);
   const pInitials = profile?.firstName?.[0]?.toUpperCase() || 'U';
   const [, setTick] = useState(0);
@@ -117,6 +143,24 @@ export function AppLayout({ children }: { children: ReactNode }) {
     if (pathname?.startsWith('/export')) return 'Export & Reports';
     if (pathname?.startsWith('/settings')) return 'Settings';
     return 'Dashboard';
+  };
+
+  const handleLogOut = async () => {
+    setIsLoggingOut(true);
+    try {
+      // Clear store and identity immediately
+      const state = useSurveyStore.getState();
+      state.resetStore();
+      
+      // Fire and forget sign out
+      supabase.auth.signOut();
+      
+      // Redirect immediately to clear UI state
+      window.location.replace('/');
+    } catch (e) { 
+      console.error("Logout process error:", e);
+      window.location.href = '/';
+    }
   };
 
   const showBack = pathname !== '/dashboard' && pathname !== '/';
@@ -192,39 +236,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
           <button 
-            onClick={async () => {
-              setIsLoggingOut(true);
-              try {
-                const { data: { session } } = await supabase.auth.getSession();
-                const user = session?.user;
-                if (user) {
-                  const state = useSurveyStore.getState();
-                  const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
-                  if (pendingSurveys.length > 0) {
-                    const updates = pendingSurveys.map(survey => ({
-                      id: survey.id,
-                      user_id: user.id,
-                      device_id: state.identity.local_device_id,
-                      survey_data: survey,
-                      sync_status: "Synced",
-                      updated_at: new Date().toISOString()
-                    }));
-                    
-                    const { error: dbError } = await supabase.from('surveys').upsert(updates);
-                    if (!dbError) {
-                      pendingSurveys.forEach(survey => {
-                        state.updateSurvey(survey.id, { status: "Synced" });
-                      });
-                      state.setLastSyncedAt(Date.now());
-                    }
-                  }
-                }
-                useSurveyStore.getState().setIdentity({ isGuest: false });
-                await supabase.auth.signOut();
-              } catch (e) { console.error(e); }
-              window.location.href = '/';
-            }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors text-[13.5px] text-white/65 hover:bg-white/5 hover:text-white/90"
+            onClick={handleLogOut}
+            disabled={isLoggingOut}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors text-[13.5px] text-white/65 hover:bg-white/5 hover:text-white/90 disabled:opacity-50"
           >
             <LogOut className="w-4 h-4 opacity-80" />
             <span className="font-normal">Log Out</span>
@@ -235,7 +249,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Offline Banner */}
-        {identity?.isGuest && (
+        {!loadingAuth && identity?.isGuest && (
           <div className="bg-amber-100/50 border-b border-amber-200/60 text-amber-800 px-4 py-2 text-[13px] flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-2">
               <WifiOff className="w-4 h-4 text-amber-600" />
@@ -275,39 +289,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <span className="hidden sm:inline">New Survey</span>
             </Link>
             <button 
-              onClick={async () => {
-                setIsLoggingOut(true);
-                try {
-                  const { data: { session } } = await supabase.auth.getSession();
-                  const user = session?.user;
-                  if (user) {
-                    const state = useSurveyStore.getState();
-                    const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
-                    if (pendingSurveys.length > 0) {
-                      const updates = pendingSurveys.map(survey => ({
-                        id: survey.id,
-                        user_id: user.id,
-                        device_id: state.identity.local_device_id,
-                        survey_data: survey,
-                        sync_status: "Synced",
-                        updated_at: new Date().toISOString()
-                      }));
-                      
-                      const { error: dbError } = await supabase.from('surveys').upsert(updates);
-                      if (!dbError) {
-                        pendingSurveys.forEach(survey => {
-                          state.updateSurvey(survey.id, { status: "Synced" });
-                        });
-                        state.setLastSyncedAt(Date.now());
-                      }
-                    }
-                  }
-                  useSurveyStore.getState().setIdentity({ isGuest: false });
-                  await supabase.auth.signOut();
-                } catch (e) { console.error(e); }
-                window.location.href = '/';
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-forest/20 text-forest hover:bg-forest/5 rounded-md text-[13px] font-medium transition-colors ml-1"
+              onClick={handleLogOut}
+              disabled={isLoggingOut}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-forest/20 text-forest hover:bg-forest/5 rounded-md text-[13px] font-medium transition-colors ml-1 disabled:opacity-50"
               title="Log Out"
             >
               <LogOut className="w-[15px] h-[15px]" />
@@ -412,39 +396,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   </div>
                 </Link>
                 <button 
-                  onClick={async () => {
-                    setIsLoggingOut(true);
-                    try {
-                      const { data: { session } } = await supabase.auth.getSession();
-                      const user = session?.user;
-                      if (user) {
-                        const state = useSurveyStore.getState();
-                        const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
-                        if (pendingSurveys.length > 0) {
-                          const updates = pendingSurveys.map(survey => ({
-                            id: survey.id,
-                            user_id: user.id,
-                            device_id: state.identity.local_device_id,
-                            survey_data: survey,
-                            sync_status: "Synced",
-                            updated_at: new Date().toISOString()
-                          }));
-                          
-                          const { error: dbError } = await supabase.from('surveys').upsert(updates);
-                          if (!dbError) {
-                            pendingSurveys.forEach(survey => {
-                              state.updateSurvey(survey.id, { status: "Synced" });
-                            });
-                            state.setLastSyncedAt(Date.now());
-                          }
-                        }
-                      }
-                      useSurveyStore.getState().setIdentity({ isGuest: false });
-                      await supabase.auth.signOut();
-                    } catch (e) { console.error(e); }
-                    window.location.href = '/';
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors text-[14.5px] text-white/70 hover:bg-white/10 hover:text-white"
+                  onClick={handleLogOut}
+                  disabled={isLoggingOut}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors text-[14.5px] text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-50"
                 >
                   <LogOut className="w-5 h-5 opacity-80" />
                   <span className="font-medium">Log Out</span>

@@ -22,6 +22,7 @@ export default function Home() {
   const [lastName, setLastName] = useState('');
   const [role, setRole] = useState('');
   const [institution, setInstitution] = useState('');
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,17 +53,28 @@ export default function Home() {
     let subscription: any = null;
 
     const init = async () => {
+      // Get initial session first to avoid flash
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
+      
+      if (initialSession?.user && (view === 'login' || view === 'verify' || view === 'register') && !window.location.hash.includes('type=recovery')) {
+        router.replace('/dashboard');
+        return;
+      }
+      
+      setIsCheckingSession(false);
+
       // Now monitor auth state
       const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
         if ((event as string) === 'PASSWORD_RECOVERY') {
           setView('update-password');
+          setIsCheckingSession(false);
           return;
         }
 
-        // Only auto-redirect if they are in the login view and NOT in recovery flow
-        if (session?.user && (view === 'login' || view === 'verify') && (event as string) !== 'PASSWORD_RECOVERY' && !window.location.hash.includes('type=recovery')) {
+        // Only auto-redirect if they are in the login or register view and NOT in recovery flow
+        if (session?.user && (view === 'login' || view === 'verify' || view === 'register') && (event as string) !== 'PASSWORD_RECOVERY' && !window.location.hash.includes('type=recovery')) {
           const state = useSurveyStore.getState();
-          const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
+          const pendingSurveys = state.surveys.filter(s => s.status === 'Pending' && !s.id.startsWith('mock-'));
           if (pendingSurveys.length > 0) {
             try {
               const updates = pendingSurveys.map(survey => ({
@@ -121,9 +133,19 @@ export default function Home() {
       }
 
       const user = data.user;
-      
       const state = useSurveyStore.getState();
-      const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
+      
+      if (user) {
+        state.updateProfile({
+          firstName: user.user_metadata.first_name || '',
+          lastName: user.user_metadata.last_name || '',
+          title: user.user_metadata.title || '',
+          role: user.user_metadata.role || '',
+          institution: user.user_metadata.institution || '',
+        });
+      }
+      
+      const pendingSurveys = state.surveys.filter(s => s.status === 'Pending' && !s.id.startsWith('mock-'));
       if (pendingSurveys.length > 0) {
         try {
           const updates = pendingSurveys.map(survey => ({
@@ -151,7 +173,7 @@ export default function Home() {
         state.setIdentity({ isGuest: false });
       }
 
-      window.location.href = '/dashboard';
+      router.replace('/dashboard');
     } catch (err: any) {
       if (err.message === 'Invalid login credentials') {
         setError("Email does not exist or incorrect password. Create an account?");
@@ -161,6 +183,14 @@ export default function Home() {
       setLoading(false);
     }
   };
+
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center bg-[#FDFCF8]">
+         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-800"></div>
+      </div>
+    );
+  }
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,10 +203,11 @@ export default function Home() {
     setError(null);
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
+          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/` : undefined,
           data: {
             first_name: firstName,
             last_name: lastName,
@@ -189,6 +220,29 @@ export default function Home() {
 
       if (signUpError) {
         throw signUpError;
+      }
+
+      // If email confirmation is off, we might get a session immediately
+      if (data.session) {
+        const user = data.user;
+        const state = useSurveyStore.getState();
+        
+        if (user) {
+          state.updateProfile({
+            firstName: user.user_metadata.first_name || '',
+            lastName: user.user_metadata.last_name || '',
+            title: user.user_metadata.title || '',
+            role: user.user_metadata.role || '',
+            institution: user.user_metadata.institution || '',
+          });
+        }
+        
+        if (state.identity.isGuest) {
+          state.setIdentity({ isGuest: false });
+        }
+        
+        window.location.replace('/dashboard');
+        return;
       }
 
       setLoading(false);
@@ -625,21 +679,23 @@ export default function Home() {
                 <div className="w-full h-px bg-slate-200"></div>
               </div>
 
-              <div className="mt-8">
-                <button 
-                  onClick={() => {
-                    useSurveyStore.getState().initGuestIdentity();
-                    router.push('/dashboard');
-                  }}
-                  className="w-full group bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-medium py-3 rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
-                >
-                  <span>Continue Offline Mode</span>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-700 group-hover:translate-x-0.5 transition-all" />
-                </button>
-                <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed max-w-sm mx-auto">
-                  Proceed without an internet connection. Data will be saved locally and sync can be triggered later.
-                </p>
-              </div>
+              {!loading && (
+                <div className="mt-8">
+                  <button 
+                    onClick={() => {
+                      useSurveyStore.getState().initGuestIdentity();
+                      router.push('/dashboard');
+                    }}
+                    className="w-full group bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-medium py-3 rounded-xl transition-all shadow-sm flex items-center justify-center space-x-2"
+                  >
+                    <span>Continue Offline Mode</span>
+                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-700 group-hover:translate-x-0.5 transition-all" />
+                  </button>
+                  <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed max-w-sm mx-auto">
+                    Proceed without an internet connection. Data will be saved locally and sync can be triggered later.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

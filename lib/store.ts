@@ -73,6 +73,8 @@ export interface SurveyState {
   clearDraft: () => void;
   deleteSurvey: (id: string) => void;
   updateSurvey: (id: string, data: Partial<SurveySession>) => void;
+  replaceSurveys: (surveys: SurveySession[]) => void;
+  resetStore: () => void;
   addSpecies: (surveyId: string, quadratIndex: number, speciesParams: { name: string, family: string, localName?: string, notes?: string, stratum?: string }) => void;
   updateSpeciesPresence: (surveyId: string, speciesId: string, quadratIndex: number, amount: number) => void;
   updateSpecies: (surveyId: string, speciesId: string, data: Partial<SpeciesRecord>) => void;
@@ -81,6 +83,38 @@ export interface SurveyState {
   updatePreferences: (data: Partial<AppPreferences>) => void;
   setLastSyncedAt: (timestamp: number) => void;
 }
+
+const MOCK_SURVEY: SurveySession = {
+  id: 'mock-1',
+  projectName: 'Borneo Canopy Survey',
+  siteName: 'Danum Valley Plot B',
+  ecosystemType: 'Tropical Rainforest',
+  vegetationType: 'Dipterocarp Forest',
+  sampleSite: 'Plot B - North',
+  researcherName: 'Dr. Sarah Chen',
+  date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+  status: 'Synced',
+  numQuadrats: 5,
+  quadratSize: '10x10m',
+  speciesList: [
+    {
+      id: 's1',
+      name: 'Shorea lepidota',
+      family: 'Dipterocarpaceae',
+      quadrats: [1, 1, 0, 1, 0],
+      localName: 'Meranti',
+      stratum: 'Emergent'
+    },
+    {
+      id: 's2',
+      name: 'Lithocarpus javensis',
+      family: 'Fagaceae',
+      quadrats: [0, 1, 1, 0, 1],
+      localName: 'Oak',
+      stratum: 'Canopy'
+    }
+  ],
+};
 
 export const useSurveyStore = create<SurveyState>()(
   persist(
@@ -108,7 +142,7 @@ export const useSurveyStore = create<SurveyState>()(
     backgroundTracking: false,
     coordinateFormat: 'DD',
   },
-  surveys: [],
+  surveys: [MOCK_SURVEY],
   
   addSurvey: (config) => {
     const id = Date.now().toString();
@@ -132,7 +166,8 @@ export const useSurveyStore = create<SurveyState>()(
         local_device_id: did,
         local_session_token: 'offline_token_' + Date.now().toString(36),
         isGuest: true,
-      }
+      },
+      surveys: state.surveys.length === 0 ? [MOCK_SURVEY] : state.surveys
     };
   }),
 
@@ -154,6 +189,29 @@ export const useSurveyStore = create<SurveyState>()(
     surveys: state.surveys.map(survey => 
       survey.id === id ? { ...survey, ...data } : survey
     )
+  })),
+
+  replaceSurveys: (surveys) => set((state) => {
+    // Keep mock data if not already present
+    const hasMock = surveys.some(s => s.id === 'mock-1');
+    return { surveys: hasMock ? surveys : [...surveys, MOCK_SURVEY] };
+  }),
+
+  resetStore: () => set(() => ({
+    surveys: [MOCK_SURVEY],
+    profile: {
+      firstName: '',
+      lastName: '',
+      title: '',
+      role: '',
+      institution: '',
+    },
+    identity: {
+      guest_user_id: null,
+      local_device_id: null,
+      local_session_token: null,
+      isGuest: true,
+    }
   })),
 
   addSpecies: (surveyId, quadratIndex, { name, family, localName, notes, stratum }) => set((state) => {
@@ -250,6 +308,6 @@ export const useSurveyStore = create<SurveyState>()(
   setLastSyncedAt: (timestamp) => set({ lastSyncedAt: timestamp })
 }),
 {
-  name: 'ecosurvey-storage-v4',
+  name: 'ecosurvey-storage-v5',
 }
 ));
