@@ -287,7 +287,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-sage-pale rounded-full text-[12px] font-medium text-forest-mid border border-moss/20">
               <div className="w-1.5 h-1.5 rounded-full bg-moss" />
               {(() => {
-                if (!lastSyncedAt) return 'Waiting to sync...';
+                if (identity?.isGuest) return 'Local mode';
+                if (!lastSyncedAt) return 'Pending cloud sync';
                 try {
                   return `Synced ${formatDistanceToNow(lastSyncedAt)} ago`;
                 } catch (e) {

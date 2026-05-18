@@ -1,12 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useSurveyStore } from '@/lib/store';
 import { Download, ChevronDown, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { calculatePhytoParameters, exportToCSV, exportToPDF } from '@/lib/export-utils';
 
 export default function PhytosociologyParameters() {
   const surveys = useSurveyStore(state => state.surveys);
+  const profile = useSurveyStore(state => state.profile);
+  const preferences = useSurveyStore(state => state.preferences);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>('all');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
@@ -17,64 +20,17 @@ export default function PhytosociologyParameters() {
     ? 'All Projects' 
     : surveys.find(s => s.id === selectedSurveyId)?.projectName || 'Select Project';
 
-  let totalQuadrats = 0;
-  targetSurveys.forEach(s => totalQuadrats += s.numQuadrats);
-  if (totalQuadrats === 0) totalQuadrats = 1;
+  const { parameters, totals: computedTotals } = useMemo(() => 
+    calculatePhytoParameters(targetSurveys, quadratSize)
+  , [targetSurveys, quadratSize]);
 
-  // Aggregate species across selected surveys
-  const aggregatedSpecies = new Map<string, { id: string, name: string, family: string, localName?: string, abundances: number[], presences: number }>();
-  
-  targetSurveys.forEach(survey => {
-    survey.speciesList.forEach(s => {
-      const key = s.name.toLowerCase();
-      if (!aggregatedSpecies.has(key)) {
-        aggregatedSpecies.set(key, { 
-          id: key, 
-          name: s.name, 
-          family: s.family, 
-          localName: s.localName, 
-          abundances: [],
-          presences: 0 
-        });
-      }
-      const entry = aggregatedSpecies.get(key)!;
-      const n = s.quadrats.reduce((acc, val) => acc + val, 0); // Total abundance in this survey
-      const a = s.quadrats.filter(val => val > 0).length; // Frequency of occurrence in this survey
-      entry.abundances.push(n);
-      entry.presences += a;
-    });
-  });
+  const metricsMap = useMemo(() => {
+    const map = new Map();
+    parameters.forEach(p => map.set(p.id, p));
+    return map;
+  }, [parameters]);
 
-  const speciesList = Array.from(aggregatedSpecies.values());
-
-  const metricsMap = new Map();
-  let sumF = 0, sumD = 0, sumA = 0;
-
-  speciesList.forEach(s => {
-    const n = s.abundances.reduce((acc, val) => acc + val, 0); // Total abundance
-    const a = s.presences; // Frequency of occurrence
-    const F = (a / totalQuadrats) * 100;
-    const totalArea = totalQuadrats * quadratSize;
-    const D = n / totalArea;
-    const A = a > 0 ? n / a : 0;
-    
-    sumF += F;
-    sumD += D;
-    sumA += A;
-
-    metricsMap.set(s.id, { n, a, F, D, A });
-  });
-
-  speciesList.forEach(s => {
-     const m = metricsMap.get(s.id);
-     if (m) {
-       m.RF = sumF > 0 ? (m.F / sumF) * 100 : 0;
-       m.RD = sumD > 0 ? (m.D / sumD) * 100 : 0;
-       m.RA = sumA > 0 ? (m.A / sumA) * 100 : 0;
-       m.IVI = m.RF + m.RD + m.RA;
-       m.AF = m.F > 0 ? m.A / m.F : 0;
-     }
-  });
+  const speciesList = parameters;
 
   let sortedSpecies = [...speciesList];
   if (sortConfig !== null) {
@@ -109,17 +65,17 @@ export default function PhytosociologyParameters() {
     setSortConfig({ key, direction });
   };
 
-  const exportToCSV = () => {
+  const handleExport = () => {
     if (speciesList.length === 0) return;
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "No.,Species Name,Family,N,A(Abundance),F(Frequency%),D(m²),R.A(%),R.D(%),R.F(%),A/F,IVI\n";
 
-    sortedSpecies.forEach((species, index) => {
-      const m = metricsMap.get(species.id) || { n:0, A:0, F:0, D:0, RA:0, RF:0, RD:0, AF:0, IVI:0 };
-      const row = [
-        index + 1,
-        `"${species.name}"`,
-        `"${species.family || ''}"`,
+    if (targetSurveys.length === 1) {
+      exportToPDF(`${targetSurveys[0].projectName}_Phyto_Report`, targetSurveys[0], profile, preferences);
+    } else {
+      const headers = ["No.", "Species Name", "Family", "N", "A", "F(%)", "D(m²)", "R.A(%)", "R.D(%)", "R.F(%)", "A/F", "IVI"];
+      const rows = sortedSpecies.map((m, i) => [
+        i + 1,
+        m.name,
+        m.family || '',
         m.n,
         m.A.toFixed(2),
         m.F.toFixed(2),
@@ -129,67 +85,27 @@ export default function PhytosociologyParameters() {
         m.RF.toFixed(2),
         m.AF.toFixed(4),
         m.IVI.toFixed(2)
-      ].join(",");
-      csvContent += row + "\n";
-    });
+      ]);
+      
+      // Add Totals row
+      rows.push([
+        "", "TOTAL", "", computedTotals.n, computedTotals.A.toFixed(2), computedTotals.F.toFixed(2), computedTotals.D.toFixed(2), 
+        computedTotals.RA.toFixed(2), computedTotals.RD.toFixed(2), computedTotals.RF.toFixed(2), computedTotals.AF.toFixed(4), computedTotals.IVI.toFixed(2)
+      ]);
 
-    let totalN = 0, totalA = 0, totalF = 0, totalD = 0, totalRA = 0, totalRD = 0, totalRF = 0, totalAF = 0, totalIVI = 0;
-    sortedSpecies.forEach(s => {
-      const m = metricsMap.get(s.id);
-      if (m) {
-        totalN += m.n;
-        totalA += m.A;
-        totalF += m.F;
-        totalD += m.D;
-        totalRA += m.RA;
-        totalRD += m.RD;
-        totalRF += m.RF;
-        totalAF += m.AF;
-        totalIVI += m.IVI;
-      }
-    });
-
-    const totalRow = [
-      "",
-      "\"TOTAL\"",
-      "",
-      totalN,
-      totalA.toFixed(2),
-      totalF.toFixed(2),
-      totalD.toFixed(2),
-      totalRA.toFixed(2),
-      totalRD.toFixed(2),
-      totalRF.toFixed(2),
-      totalAF.toFixed(4),
-      totalIVI.toFixed(2)
-    ].join(",");
-    
-    csvContent += totalRow + "\n";
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${selectedProjectName}_parameters.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      exportToCSV(`${selectedProjectName}_Phyto_Parameters`, headers, rows as any);
+    }
   };
 
-  let sumRowN = 0, sumRowA = 0, sumRowF = 0, sumRowD = 0, sumRowRA = 0, sumRowRD = 0, sumRowRF = 0, sumRowAF = 0, sumRowIVI = 0;
-  sortedSpecies.forEach(s => {
-    const m = metricsMap.get(s.id);
-    if (m) {
-      sumRowN += m.n;
-      sumRowA += m.A;
-      sumRowF += m.F;
-      sumRowD += m.D;
-      sumRowRA += m.RA;
-      sumRowRD += m.RD;
-      sumRowRF += m.RF;
-      sumRowAF += m.AF;
-      sumRowIVI += m.IVI;
-    }
-  });
+  let sumRowN = computedTotals.n;
+  let sumRowA = computedTotals.A;
+  let sumRowF = computedTotals.F;
+  let sumRowD = computedTotals.D;
+  let sumRowRA = computedTotals.RA;
+  let sumRowRD = computedTotals.RD;
+  let sumRowRF = computedTotals.RF;
+  let sumRowAF = computedTotals.AF;
+  let sumRowIVI = computedTotals.IVI;
 
   return (
     <div className="max-w-[1200px] mx-auto pb-10 space-y-6">
@@ -271,7 +187,7 @@ export default function PhytosociologyParameters() {
           </div>
           
           <button
-            onClick={exportToCSV}
+            onClick={handleExport}
             disabled={speciesList.length === 0}
             className="flex items-center gap-1.5 px-4 py-2 bg-forest text-white rounded-lg text-[14px] font-medium hover:bg-forest-mid transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >

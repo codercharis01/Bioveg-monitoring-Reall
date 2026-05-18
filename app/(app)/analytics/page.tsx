@@ -7,6 +7,7 @@ import { useSurveyStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
 import PhytosociologyParameters from '../phytosociology/page';
+import { calculateBiodiversityIndices, exportToExcel, exportToPDF } from '@/lib/export-utils';
 
 const CustomBarTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -34,6 +35,8 @@ const CustomPieTooltip = ({ active, payload }: any) => {
 
 export default function Analytics() {
   const surveys = useSurveyStore(state => state.surveys);
+  const profile = useSurveyStore(state => state.profile);
+  const preferences = useSurveyStore(state => state.preferences);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>('all');
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -46,53 +49,47 @@ export default function Analytics() {
     ? 'All Projects' 
     : surveys.find(s => s.id === selectedSurveyId)?.projectName || 'Select Project';
 
+  const handleExport = async () => {
+    if (targetSurveys.length === 0) return;
+    
+    // For single survey, offer PDF, for many use Excel
+    if (targetSurveys.length === 1) {
+      exportToPDF(`${targetSurveys[0].projectName}_Diversity_Report`, targetSurveys[0], profile, preferences);
+    } else {
+      const { shannon, simpson, richness, evenness } = calculateBiodiversityIndices(targetSurveys);
+      const summaryData = [{
+        'Report Type': 'Aggregated Diversity Report',
+        'Projects Included': targetSurveys.length,
+        'Shannon (H\')': shannon.toFixed(3),
+        'Simpson (D)': simpson.toFixed(3),
+        'Species Richness (S)': richness,
+        'Evenness (J)': evenness.toFixed(3),
+        'Generated At': new Date().toLocaleString()
+      }];
+      
+      const speciesAbundance = targetSurveys.flatMap(s => s.speciesList).map(s => ({
+        'Species': s.name,
+        'Family': s.family,
+        'Stratum': s.stratum,
+        'Total Abundance': s.quadrats.reduce((a, b) => a + b, 0)
+      }));
+
+      exportToExcel(`${selectedProjectName}_Diversity_Analytics`, [
+        { name: 'Summary', data: summaryData },
+        { name: 'Species Data', data: speciesAbundance }
+      ]);
+    }
+  };
+
   const [mounted, setMounted] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
 
   const { shannon, simpson, richness, evenness, familyData, strataData } = useMemo(() => {
-    // Collect all species abundances
-    const speciesAbundance = new Map<string, number>();
-    const familyAbundance = new Map<string, number>();
-    const strataAbundance = new Map<string, number>();
-
-    targetSurveys.forEach(survey => {
-      survey.speciesList.forEach(species => {
-        const abundance = species.quadrats.reduce((sum, val) => sum + val, 0);
-        if (abundance > 0) {
-          // Key by name to combine across surveys
-          const currentSpCount = speciesAbundance.get(species.name) || 0;
-          speciesAbundance.set(species.name, currentSpCount + abundance);
-
-          const famName = species.family || 'Unknown';
-          const currentFamCount = familyAbundance.get(famName) || 0;
-          familyAbundance.set(famName, currentFamCount + abundance);
-
-          const stratum = species.stratum || 'Unspecified';
-          const currentStrataCount = strataAbundance.get(stratum) || 0;
-          strataAbundance.set(stratum, currentStrataCount + abundance);
-        }
-      });
-    });
-
-    const abundances = Array.from(speciesAbundance.values());
-    const N = abundances.reduce((sum, val) => sum + val, 0);
-    const S = abundances.length;
-
-    let shannonIndex = 0;
-    let simpsonIdx = 0; // standard Simpson 1 - sum(p_i^2)
-
-    if (N > 0) {
-      abundances.forEach(n_i => {
-        const p_i = n_i / N;
-        shannonIndex -= p_i * Math.log(p_i);
-        simpsonIdx += p_i * p_i;
-      });
-      simpsonIdx = 1 - simpsonIdx;
-    }
-
-    const jEvenness = S > 1 && shannonIndex > 0 ? shannonIndex / Math.log(S) : 0;
-
+    const indices = calculateBiodiversityIndices(targetSurveys);
+    const familyAbundance = indices.familyAbundance;
+    const strataAbundance = indices.strataAbundance;
+    
     // Prepare family bar chart data
     const sortedFamilies = Array.from(familyAbundance.entries())
       .map(([name, count]) => ({ name: name.substring(0, 6) + '.', fullName: name, count }))
@@ -111,14 +108,15 @@ export default function Analytics() {
       .sort((a, b) => b.value - a.value);
 
     return {
-      shannon: shannonIndex,
-      simpson: simpsonIdx,
-      richness: S,
-      evenness: jEvenness,
+      shannon: indices.shannon,
+      simpson: indices.simpson,
+      richness: indices.richness,
+      evenness: indices.evenness,
       familyData: sortedFamilies,
       strataData: calculatedStrataData
     };
   }, [targetSurveys]);
+
 
   if (!mounted) {
     return (
@@ -199,7 +197,9 @@ export default function Analytics() {
           </div>
           
           <button
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#1f3a2c] text-white rounded-lg text-[14.5px] font-medium hover:bg-[#15271e] transition-colors shadow-sm"
+            onClick={handleExport}
+            disabled={targetSurveys.length === 0}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#1f3a2c] text-white rounded-lg text-[14.5px] font-medium hover:bg-[#15271e] transition-colors shadow-sm disabled:opacity-50"
           >
             <Download className="w-[16px] h-[16px]" />
             Export

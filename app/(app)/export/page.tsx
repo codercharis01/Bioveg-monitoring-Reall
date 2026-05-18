@@ -4,12 +4,11 @@ import { useState, useMemo } from 'react';
 import { Download, FileText, Filter, ChevronDown, Calendar, Search } from 'lucide-react';
 import { useSurveyStore } from '@/lib/store';
 import { cn, formatCoordinate } from '@/lib/utils';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { calculateBiodiversityIndices, calculatePhytoParameters, exportToCSV, exportToExcel, exportToPDF } from '@/lib/export-utils';
 
 export default function ExportPage() {
   const surveys = useSurveyStore(state => state.surveys) || [];
+  const profile = useSurveyStore(state => state.profile);
   const preferences = useSurveyStore(state => state.preferences);
   const [selectedFormat, setSelectedFormat] = useState('csv');
   const [selectedSurveyId, setSelectedSurveyId] = useState(surveys[0]?.id || '');
@@ -20,94 +19,80 @@ export default function ExportPage() {
     setTimeout(() => setToastMsg(''), 3000);
   };
 
-
   const selectedSurvey = surveys.find(s => s?.id === selectedSurveyId) || surveys[0];
 
-  const speciesRichness = selectedSurvey?.speciesList?.length || 0;
-  const familiesRecorded = new Set(selectedSurvey?.speciesList?.map(s => s.family)).size || 0;
+  const { shannon, simpson, richness, evenness, totalAbundance, familyAbundance } = useMemo(() => {
+    if (!selectedSurvey) return { shannon: 0, simpson: 0, richness: 0, evenness: 0, totalAbundance: 0, familyAbundance: new Map() };
+    return calculateBiodiversityIndices([selectedSurvey]);
+  }, [selectedSurvey]);
+
+  const familiesRecorded = familyAbundance.size;
   
-  // Calculate mock area
-  const qSizeText = selectedSurvey?.quadratSize || '20 × 20 m (400 m²)';
-  const qAreaMatch = qSizeText.match(/\((\d+)\s*m²\)/) || qSizeText.match(/(\d+)\s*m²/);
-  const qArea = qAreaMatch ? parseInt(qAreaMatch[1], 10) : 400;
-  const totalArea = (qArea * (selectedSurvey?.numQuadrats || 1)) / 10000; // ha
+  const phyto = useMemo(() => {
+    if (!selectedSurvey) return null;
+    // Extract quadrat size from text like "20 × 20 m (400 m²)"
+    const qSizeText = selectedSurvey.quadratSize || '1';
+    const qAreaMatch = qSizeText.match(/\((\d+)\s*m²\)/) || qSizeText.match(/(\d+)\s*m²/);
+    const qArea = qAreaMatch ? parseInt(qAreaMatch[1], 10) : 1;
+    return calculatePhytoParameters([selectedSurvey], qArea);
+  }, [selectedSurvey]);
 
-  const mockIndices = useMemo(() => {
-    return {
-      shannon: speciesRichness > 0 ? (2 + (speciesRichness % 2)).toFixed(2) : "0.00",
-      simpson: speciesRichness > 0 ? (0.7 + (speciesRichness % 3) * 0.1).toFixed(2) : "0.00",
-      pielou: speciesRichness > 0 ? (0.6 + (speciesRichness % 4) * 0.1).toFixed(2) : "0.00"
-    };
-  }, [speciesRichness]);
+  const topSpecies = useMemo(() => {
+    if (!phyto) return null;
+    return [...phyto.parameters].sort((a, b) => b.IVI - a.IVI)[0];
+  }, [phyto]);
 
-  const mockParameters = useMemo(() => {
-    if (!selectedSurvey || !selectedSurvey.speciesList) return null;
+  const handleDownload = () => {
+    if (!selectedSurvey) return showToast('No survey selected.');
     
-    let totalQuadrats = selectedSurvey.numQuadrats || 1;
-    const aggregatedSpecies = new Map<string, { name: string, abundances: number[], presences: number }>();
-    
-    selectedSurvey.speciesList.forEach(s => {
-      const key = s.name.toLowerCase();
-      if (!aggregatedSpecies.has(key)) {
-        aggregatedSpecies.set(key, { name: s.name, abundances: [], presences: 0 });
-      }
-      const entry = aggregatedSpecies.get(key)!;
-      const n = s.quadrats.reduce((acc, val) => acc + val, 0); 
-      const a = s.quadrats.filter(val => val > 0).length;
-      entry.abundances.push(n);
-      entry.presences += a;
-    });
-
-    const speciesList = Array.from(aggregatedSpecies.values());
-    const metricsMap = new Map();
-    let sumF = 0, sumD = 0, sumA = 0;
-
-    speciesList.forEach(s => {
-      const n = s.abundances.reduce((acc, val) => acc + val, 0); 
-      const a = s.presences; 
-      const F = (a / totalQuadrats) * 100;
-      const D = n / totalArea; 
-      const A = a > 0 ? n / a : 0;
+    if (selectedFormat === 'csv') {
+      const headers = ["Scientific Name", "Family", "Stratum", "Notes", "Total Abundance", ...Array.from({length: selectedSurvey.numQuadrats}).map((_, i) => `Q${i+1}`)];
+      const rows = selectedSurvey.speciesList.map(s => [
+        s.name,
+        s.family || '',
+        s.stratum || '',
+        s.notes || '',
+        s.quadrats.reduce((a, b) => a + b, 0),
+        ...s.quadrats
+      ]);
+      exportToCSV(`${selectedSurvey.projectName}_data`, headers, rows);
+    } else if (selectedFormat === 'excel') {
+      const speciesData = selectedSurvey.speciesList.map(s => ({
+        'Scientific Name': s.name,
+        'Family': s.family,
+        'Stratum': s.stratum,
+        'Notes': s.notes,
+        'Total Abundance': s.quadrats.reduce((a, b) => a + b, 0),
+        ...Object.fromEntries(s.quadrats.map((val, idx) => [`Q${idx + 1}`, val]))
+      }));
       
-      sumF += F;
-      sumD += D;
-      sumA += A;
+      const parametersData = phyto?.parameters.map(p => ({
+        'Species': p.name,
+        'Family': p.family,
+        'N (Abundance)': p.n,
+        'F (Frequency %)': p.F.toFixed(2),
+        'D (Density)': p.D.toFixed(3),
+        'R.A (%)': p.RA.toFixed(2),
+        'R.D (%)': p.RD.toFixed(2),
+        'R.F (%)': p.RF.toFixed(2),
+        'IVI': p.IVI.toFixed(2)
+      })) || [];
 
-      metricsMap.set(s.name, { n, a, F, D, A });
-    });
-
-    speciesList.forEach(s => {
-       const m = metricsMap.get(s.name);
-       if (m) {
-         m.RF = sumF > 0 ? (m.F / sumF) * 100 : 0;
-         m.RD = sumD > 0 ? (m.D / sumD) * 100 : 0;
-         m.RA = sumA > 0 ? (m.A / sumA) * 100 : 0;
-         m.IVI = m.RF + m.RD + m.RA;
-       }
-    });
-
-    const sortedByIVI = speciesList.sort((a, b) => {
-      const aIVI = metricsMap.get(a.name)?.IVI || 0;
-      const bIVI = metricsMap.get(b.name)?.IVI || 0;
-      return bIVI - aIVI;
-    });
-
-    const topSpecies = sortedByIVI[0];
-    if (!topSpecies) return null;
-    
-    const m = metricsMap.get(topSpecies.name);
-    return {
-      name: topSpecies.name,
-      F: m.F?.toFixed(2) || '0.00',
-      A: m.A?.toFixed(2) || '0.00',
-      D: m.D?.toFixed(2) || '0.00',
-      RA: m.RA?.toFixed(2) || '0.00',
-      RD: m.RD?.toFixed(2) || '0.00',
-      RF: m.RF?.toFixed(2) || '0.00',
-      AF: (m.F > 0 ? (m.A / m.F) : 0).toFixed(4),
-      IVI: m.IVI?.toFixed(2) || '0.00',
-    };
-  }, [selectedSurvey, totalArea]);
+      exportToExcel(`${selectedSurvey.projectName}_full_report`, [
+        { name: 'Species List', data: speciesData },
+        { name: 'Parameters', data: parametersData },
+        { name: 'Summary', data: [{
+            'Shannon Index': shannon.toFixed(3),
+            'Simpson Index': simpson.toFixed(3),
+            'Richness': richness,
+            'Evenness': evenness.toFixed(3)
+          }] 
+        }
+      ]);
+    } else if (selectedFormat === 'pdf') {
+      exportToPDF(`${selectedSurvey.projectName}_report`, selectedSurvey, profile, preferences);
+    }
+  };
 
   return (
     <div className="w-full">
@@ -181,21 +166,21 @@ export default function ExportPage() {
                   <div className="report-data-row"><span className="report-data-key">Transect length</span><span className="report-data-val">{selectedSurvey.transectLength ? `${selectedSurvey.transectLength} m` : '—'}</span></div>
                   <div className="report-data-row"><span className="report-data-key">Sampling interval</span><span className="report-data-val">{selectedSurvey.samplingInterval ? `${selectedSurvey.samplingInterval} m` : '—'}</span></div>
                   <div className="report-data-row"><span className="report-data-key">Total plots</span><span className="report-data-val">{selectedSurvey.numQuadrats}</span></div>
-                  <div className="report-data-row"><span className="report-data-key">Total area</span><span className="report-data-val">{totalArea.toFixed(3)} ha</span></div>
+                  <div className="report-data-row"><span className="report-data-key">Total Abundance</span><span className="report-data-val">{totalAbundance} ind.</span></div>
                 </div>
                 <div>
                   <div className="report-section-title">Phytosociological Parameters</div>
-                  {mockParameters ? (
+                  {topSpecies ? (
                     <>
-                      <div className="report-data-row"><span className="report-data-key">Top Species</span><span className="report-data-val max-w-[100px] truncate" title={mockParameters.name}>{mockParameters.name}</span></div>
-                      <div className="report-data-row"><span className="report-data-key">Frequency</span><span className="report-data-val">{mockParameters.F} %</span></div>
-                      <div className="report-data-row"><span className="report-data-key">Abundance</span><span className="report-data-val">{mockParameters.A}</span></div>
-                      <div className="report-data-row"><span className="report-data-key">Density</span><span className="report-data-val">{mockParameters.D}</span></div>
-                      <div className="report-data-row"><span className="report-data-key">Rel. Frequency</span><span className="report-data-val">{mockParameters.RF} %</span></div>
-                      <div className="report-data-row"><span className="report-data-key">Rel. Abundance</span><span className="report-data-val">{mockParameters.RA} %</span></div>
-                      <div className="report-data-row"><span className="report-data-key">Rel. Density</span><span className="report-data-val">{mockParameters.RD} %</span></div>
-                      <div className="report-data-row"><span className="report-data-key">A/F Ratio</span><span className="report-data-val">{mockParameters.AF}</span></div>
-                      <div className="report-data-row"><span className="report-data-key">IVI</span><span className="report-data-val">{mockParameters.IVI}</span></div>
+                      <div className="report-data-row"><span className="report-data-key">Top Species</span><span className="report-data-val max-w-[100px] truncate" title={topSpecies.name}>{topSpecies.name}</span></div>
+                      <div className="report-data-row"><span className="report-data-key">Frequency</span><span className="report-data-val">{topSpecies.F.toFixed(2)} %</span></div>
+                      <div className="report-data-row"><span className="report-data-key">Abundance</span><span className="report-data-val">{topSpecies.n}</span></div>
+                      <div className="report-data-row"><span className="report-data-key">Density</span><span className="report-data-val">{topSpecies.D.toFixed(3)}</span></div>
+                      <div className="report-data-row"><span className="report-data-key">Rel. Frequency</span><span className="report-data-val">{topSpecies.RF.toFixed(2)} %</span></div>
+                      <div className="report-data-row"><span className="report-data-key">Rel. Abundance</span><span className="report-data-val">{topSpecies.RA.toFixed(2)} %</span></div>
+                      <div className="report-data-row"><span className="report-data-key">Rel. Density</span><span className="report-data-val">{topSpecies.RD.toFixed(2)} %</span></div>
+                      <div className="report-data-row"><span className="report-data-key">A/F Ratio</span><span className="report-data-val">{topSpecies.AF.toFixed(4)}</span></div>
+                      <div className="report-data-row"><span className="report-data-key">IVI</span><span className="report-data-val">{topSpecies.IVI.toFixed(2)}</span></div>
                     </>
                   ) : (
                     <div className="report-data-row"><span className="report-data-key">—</span><span className="report-data-val">—</span></div>
@@ -203,11 +188,11 @@ export default function ExportPage() {
                 </div>
                 <div>
                   <div className="report-section-title">Diversity Indices</div>
-                  <div className="report-data-row"><span className="report-data-key">Shannon (H′)</span><span className="report-data-val">{mockIndices.shannon}</span></div>
-                  <div className="report-data-row"><span className="report-data-key">Simpson (D)</span><span className="report-data-val">{mockIndices.simpson}</span></div>
-                  <div className="report-data-row"><span className="report-data-key">Species richness</span><span className="report-data-val">{speciesRichness}</span></div>
+                  <div className="report-data-row"><span className="report-data-key">Shannon (H′)</span><span className="report-data-val">{shannon.toFixed(3)}</span></div>
+                  <div className="report-data-row"><span className="report-data-key">Simpson (D)</span><span className="report-data-val">{simpson.toFixed(3)}</span></div>
+                  <div className="report-data-row"><span className="report-data-key">Species richness</span><span className="report-data-val">{richness}</span></div>
                   <div className="report-data-row"><span className="report-data-key">Families recorded</span><span className="report-data-val">{familiesRecorded}</span></div>
-                  <div className="report-data-row"><span className="report-data-key">Pielou&apos;s J</span><span className="report-data-val">{mockIndices.pielou}</span></div>
+                  <div className="report-data-row"><span className="report-data-key">Pielou&apos;s J</span><span className="report-data-val">{evenness.toFixed(3)}</span></div>
                 </div>
               </div>
             </div>
@@ -216,10 +201,7 @@ export default function ExportPage() {
       </div>
 
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }} className="flex-wrap pb-10">
-        <button className="btn-ghost" onClick={() => {
-          if (!selectedSurvey) return alert('No survey selected.');
-          alert(`Previewing full report for ${selectedSurvey.projectName}...\n\nResearchers: ${selectedSurvey.researcherName}\nTotal Plots: ${selectedSurvey.numQuadrats}\nSpecies Recorded: ${selectedSurvey.speciesList?.length || 0}\n\n(A PDF generation window would typically open here.)`);
-        }}>Preview full report</button>
+        <button className="btn-ghost" onClick={() => exportToPDF(`${selectedSurvey.projectName}_Preview`, selectedSurvey, profile, preferences)}>Preview full report</button>
         <button className="btn-ghost" onClick={() => {
           if (!selectedSurvey) return showToast('No survey selected.');
           navigator.clipboard.writeText(`${window.location.origin}/surveys/${selectedSurvey.id}`);
@@ -232,92 +214,12 @@ export default function ExportPage() {
           </div>
         )}
 
-        <button className="btn-primary" onClick={() => {
-          if (!selectedSurvey) return showToast('No survey selected.');
-          
-          if (selectedFormat === 'csv') {
-            let csvStr = `Scientific Name,Family,Stratum,Notes,Total,${Array.from({length: selectedSurvey.numQuadrats}).map((_, i) => 'Q'+(i+1)).join(',')}\n`;
-            selectedSurvey.speciesList.forEach(s => {
-              csvStr += `"${s.name}","${s.family || ''}","${s.stratum || ''}","${s.notes || ''}",${s.quadrats.reduce((a,b)=>a+b,0)},${s.quadrats.join(',')}\n`;
-            });
-            const blob = new Blob([csvStr], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = `${selectedSurvey.projectName}.csv`;
-            a.click(); URL.revokeObjectURL(url);
-          } else if (selectedFormat === 'excel') {
-            const speciesData = selectedSurvey.speciesList.map(s => ({
-              'Scientific Name': s.name,
-              'Family': s.family,
-              'Stratum': s.stratum,
-              'Notes': s.notes,
-              'Total Abundance': s.quadrats.reduce((a, b) => a + b, 0),
-              ...Object.fromEntries(s.quadrats.map((val, idx) => [`Q${idx + 1}`, val]))
-            }));
-            const metadata = [{ 
-              'Project': selectedSurvey.projectName, 
-              'Ecosystem': selectedSurvey.ecosystemType,
-              'Date': selectedSurvey.date 
-            }];
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(metadata), "Metadata");
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(speciesData), "Species Data");
-            XLSX.writeFile(wb, `${selectedSurvey.projectName}.xlsx`);
-          } else if (selectedFormat === 'pdf') {
-            const doc = new jsPDF();
-            doc.setFontSize(20);
-            doc.text(`${selectedSurvey.projectName} Report`, 14, 22);
-            doc.setFontSize(11);
-            doc.setTextColor(100);
-            doc.text(`Date: ${selectedSurvey.date} - Ecosystem: ${selectedSurvey.ecosystemType}`, 14, 30);
-            doc.text(`Researcher: ${selectedSurvey.researcherName || 'Anonymous'}`, 14, 36);
-            
-            if (selectedSurvey.lat !== undefined && selectedSurvey.lng !== undefined) {
-              doc.text(`Coordinates: ${formatCoordinate(selectedSurvey.lat, false, preferences.coordinateFormat)}, ${formatCoordinate(selectedSurvey.lng, true, preferences.coordinateFormat)}`, 14, 42);
-            }
-            
-            doc.setFontSize(14);
-            doc.setTextColor(0);
-            doc.text("Diversity Indices & Metadata", 14, 55);
-            
-            autoTable(doc, {
-              startY: 60,
-              head: [['Parameter', 'Value', 'Parameter', 'Value']],
-              body: [
-                ['Species Richness', speciesRichness.toString(), "Shannon (H')", mockIndices.shannon],
-                ['Families Recorded', familiesRecorded.toString(), 'Simpson (D)', mockIndices.simpson],
-                ['Sample Area', `${totalArea.toFixed(3)} ha`, "Pielou's J", mockIndices.pielou],
-              ],
-              theme: 'grid',
-              headStyles: { fillColor: [40, 80, 60] }
-            });
-
-            let nextY = (doc as any).lastAutoTable.finalY + 15;
-            
-            doc.setFontSize(14);
-            doc.text("Species Inventory", 14, nextY);
-            
-            const tableData = selectedSurvey.speciesList.map(s => [
-              s.name, 
-              s.family || '—', 
-              s.stratum || '—', 
-              s.quadrats.reduce((a, b) => a + b, 0).toString()
-            ]);
-            
-            autoTable(doc, {
-              startY: nextY + 5,
-              head: [['Scientific Name', 'Family', 'Stratum', 'Total Abundance']],
-              body: tableData,
-              theme: 'striped',
-              headStyles: { fillColor: [39, 82, 58] }
-            });
-            
-            doc.save(`${selectedSurvey.projectName}.pdf`);
-          }
-        }}>
+        <button className="btn-primary" onClick={handleDownload}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 10l4 4 4-4M8 14V2M2 14h12"/></svg>
           Download {selectedFormat.toUpperCase()}
         </button>
       </div>
+
     </div>
   );
 }

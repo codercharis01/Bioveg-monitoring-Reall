@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { Plus, Search, Upload, Pencil } from 'lucide-react';
 import { useSurveyStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
-
+import { useSyncEngine } from '@/hooks/useSyncEngine';
+import { supabase } from '@/lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function SurveysList() {
@@ -14,10 +15,28 @@ export default function SurveysList() {
   const surveys = useSurveyStore(state => state.surveys) || [];
   const lastSyncedAt = useSurveyStore(state => state.lastSyncedAt);
   const deleteSurvey = useSurveyStore(state => state.deleteSurvey);
+  const identity = useSurveyStore(state => state.identity);
+  
+  const { syncing, syncData } = useSyncEngine();
   
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [, setTick] = useState(0);
+
+  const handleSyncPrompt = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (identity.isGuest) {
+      if (confirm("You are currently using guest mode. To sync with the cloud, you need to sign in. Would you like to sign in now?")) {
+        router.push('/');
+      }
+    } else {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await syncData(session.user.id);
+      }
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setTick(t => t + 1), 60000);
@@ -99,9 +118,19 @@ export default function SurveysList() {
               placeholder="Search projects..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-white border border-forest/15 rounded-lg text-sm text-charcoal outline-none focus:border-forest/50 transition-colors w-48 sm:w-64"
+              className="pl-9 pr-4 py-2 bg-white border border-forest/15 rounded-lg text-sm text-charcoal outline-none focus:border-forest/50 transition-colors w-40 sm:w-48 lg:w-64"
             />
           </div>
+
+          {surveys.some(s => s.status === 'Pending' && !s.id.startsWith('mock-')) && (
+            <button
+              onClick={handleSyncPrompt}
+              disabled={syncing}
+              className="flex items-center gap-2 px-4 py-2.5 bg-moss text-white rounded-lg text-[14.5px] font-medium hover:bg-forest transition-colors shadow-sm whitespace-nowrap disabled:opacity-50"
+            >
+              {syncing ? 'Syncing...' : 'Sync All'}
+            </button>
+          )}
           
           <button 
             onClick={handleExport}
@@ -153,7 +182,7 @@ export default function SurveysList() {
                         onClick={() => router.push(`/surveys/${survey?.id}`)}
                       >
                         <td className="px-4 py-4 text-[12.5px] text-moss/50 font-mono text-center">
-                          18{6 - index}
+                          {String(filteredSurveys.length - index).padStart(2, '0')}
                         </td>
                         <td className="px-4 py-4">
                           <div className="font-semibold text-charcoal text-[13.5px]">{survey?.projectName || 'Unnamed Survey'}</div>
@@ -187,14 +216,25 @@ export default function SurveysList() {
                           </span>
                         </td>
                         <td className="px-4 py-4 text-center">
-                          <span className={cn(
-                            "inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium leading-none tracking-wide capitalize",
-                            survey?.status === 'Synced' 
-                              ? "bg-[#dcf1e6] text-[#27523a]" 
-                              : "bg-orange-100 text-orange-800"
-                          )}>
-                            {survey?.status || 'Pending'}
-                          </span>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className={cn(
+                              "inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium leading-none tracking-wide capitalize",
+                              survey?.status === 'Synced' 
+                                ? "bg-[#dcf1e6] text-[#27523a]" 
+                                : "bg-orange-100 text-orange-800"
+                            )}>
+                              {survey?.status || 'Pending'}
+                            </span>
+                            {survey?.status === 'Pending' && !survey?.id.startsWith('mock-') && (
+                              <button 
+                                onClick={handleSyncPrompt}
+                                className="p-1 text-moss hover:text-forest hover:bg-forest/5 rounded transition-colors"
+                                title="Sync Now"
+                              >
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 11-9-9c2.52 0 4.84.83 6.7 2.22M21 3v6h-6"/></svg>
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-4 text-center relative" onClick={(e) => e.stopPropagation()}>
                           <button 
@@ -262,14 +302,24 @@ export default function SurveysList() {
                         <div className="font-semibold text-charcoal text-[14px]">{survey?.projectName || 'Unnamed Survey'}</div>
                         <div className="text-[12px] text-moss/70 mt-0.5">{survey?.sampleSite || 'Unknown Site'}</div>
                       </div>
-                      <span className={cn(
-                        "inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium leading-none tracking-wide capitalize",
-                        survey?.status === 'Synced' 
-                          ? "bg-[#dcf1e6] text-[#27523a]" 
-                          : "bg-orange-100 text-orange-800"
-                      )}>
-                        {survey?.status || 'Pending'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn(
+                          "inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium leading-none tracking-wide capitalize",
+                          survey?.status === 'Synced' 
+                            ? "bg-[#dcf1e6] text-[#27523a]" 
+                            : "bg-orange-100 text-orange-800"
+                        )}>
+                          {survey?.status || 'Pending'}
+                        </span>
+                        {survey?.status === 'Pending' && !survey?.id.startsWith('mock-') && (
+                          <button 
+                            onClick={handleSyncPrompt}
+                            className="p-1 text-moss bg-forest/5 rounded transition-colors"
+                          >
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 11-9-9c2.52 0 4.84.83 6.7 2.22M21 3v6h-6"/></svg>
+                          </button>
+                        )}
+                      </div>
                     </div>
                     
                     <div className="grid grid-cols-2 gap-y-2 mt-4 text-[12.5px]">
@@ -279,7 +329,7 @@ export default function SurveysList() {
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-forest/10 flex justify-between items-center" onClick={(e) => e.stopPropagation()}>
-                      <span className="text-[11.5px] text-moss/60 font-mono">ID: 18{6 - index}</span>
+                      <span className="text-[11.5px] text-moss/60 font-mono">ID: {String(filteredSurveys.length - index).padStart(2, '0')}</span>
                       <div className="relative">
                         <button 
                           onClick={(e) => toggleMenu(e, survey?.id)}
