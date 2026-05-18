@@ -33,11 +33,15 @@ export default function Home() {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
       if (hash) {
+        if (hash.includes('type=recovery')) {
+           setTimeout(() => setView('update-password'), 0);
+        }
+        
         const hashParams = new URLSearchParams(hash.substring(1));
         const errorDesc = hashParams.get('error_description');
         const hasAccessToken = hashParams.has('access_token');
         if (errorDesc) {
-          setError(decodeURIComponent(errorDesc.replace(/\+/g, ' ')));
+          setTimeout(() => setError(decodeURIComponent(errorDesc.replace(/\+/g, ' '))), 0);
           if (!hasAccessToken) {
              window.history.replaceState(null, '', window.location.pathname);
           }
@@ -48,65 +52,15 @@ export default function Home() {
     let subscription: any = null;
 
     const init = async () => {
-      let shouldLogOutAndRedirect = false;
-      if (typeof window !== 'undefined' && !(window as any)._hasCheckedNavigation) {
-        (window as any)._hasCheckedNavigation = true;
-        if (typeof sessionStorage !== 'undefined') {
-          if (!sessionStorage.getItem('in_session')) {
-            sessionStorage.setItem('in_session', 'true');
-            shouldLogOutAndRedirect = true;
-          }
-        }
-        if (typeof performance !== 'undefined') {
-          const navEntries = performance.getEntriesByType('navigation');
-          if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
-            shouldLogOutAndRedirect = true;
-          }
-        }
-      }
-
-      if (shouldLogOutAndRedirect) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const user = session?.user;
-          if (user) {
-            const state = useSurveyStore.getState();
-            const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
-            if (pendingSurveys.length > 0) {
-              const updates = pendingSurveys.map(survey => ({
-                id: survey.id,
-                user_id: user.id,
-                device_id: state.identity.local_device_id,
-                survey_data: survey,
-                sync_status: "Synced",
-                updated_at: new Date().toISOString()
-              }));
-              
-              const { error: dbError } = await supabase.from('surveys').upsert(updates);
-              if (!dbError) {
-                pendingSurveys.forEach(survey => {
-                  state.updateSurvey(survey.id, { status: "Synced" });
-                });
-              }
-            }
-          }
-          await supabase.auth.signOut();
-        } catch (e) {
-          console.error(e);
-        } finally {
-          useSurveyStore.getState().setIdentity({ isGuest: false });
-        }
-      }
-
       // Now monitor auth state
       const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'PASSWORD_RECOVERY') {
+        if ((event as string) === 'PASSWORD_RECOVERY') {
           setView('update-password');
           return;
         }
 
-        // Only auto-redirect if they are in the login view
-        if (session?.user && (view === 'login' || view === 'verify' || view === 'update-password')) {
+        // Only auto-redirect if they are in the login view and NOT in recovery flow
+        if (session?.user && (view === 'login' || view === 'verify') && (event as string) !== 'PASSWORD_RECOVERY' && !window.location.hash.includes('type=recovery')) {
           const state = useSurveyStore.getState();
           const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
           if (pendingSurveys.length > 0) {
@@ -134,7 +88,7 @@ export default function Home() {
           if (state.identity.isGuest) {
             state.setIdentity({ isGuest: false });
           }
-          router.push('/dashboard');
+          router.replace('/dashboard');
         }
       });
       subscription = data.subscription;
@@ -197,11 +151,10 @@ export default function Home() {
         state.setIdentity({ isGuest: false });
       }
 
-      setLoading(false);
-      router.push('/dashboard');
+      window.location.href = '/dashboard';
     } catch (err: any) {
       if (err.message === 'Invalid login credentials') {
-        setError("Password or Email Incorrect");
+        setError("Email does not exist or incorrect password. Create an account?");
       } else {
         setError(err.message);
       }
@@ -295,13 +248,9 @@ export default function Home() {
 
       if (error) throw error;
       
-      // Usually updating password automatically signs you in
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        router.push('/dashboard');
-      } else {
-        setView('login');
-      }
+      await supabase.auth.signOut();
+      setView('login');
+      setError("Password updated successfully. Please sign in with your new password.");
     } catch (err: any) {
       setError(err.message);
     } finally {

@@ -12,6 +12,16 @@ export default function Dashboard() {
   const completedSurveys = surveys.filter(s => s?.status === 'Synced').length;
   const totalSpecies = surveys.reduce((acc, survey) => acc + (survey?.speciesList?.length || 0), 0);
 
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  const speciesThisMonth = surveys.reduce((acc, survey) => {
+    const surveyDate = new Date(survey.date);
+    if (surveyDate.getMonth() === currentMonth && surveyDate.getFullYear() === currentYear) {
+      return acc + (survey?.speciesList?.length || 0);
+    }
+    return acc;
+  }, 0);
+
   const profile = useSurveyStore(state => state.profile);
 
   const sortedSurveys = [...surveys].sort((a, b) => {
@@ -51,7 +61,7 @@ export default function Dashboard() {
     <div className="max-w-[1200px] mx-auto">
       <div className="flex justify-between items-start mb-7">
         <div>
-          <h1 className="text-[22px] font-semibold text-charcoal tracking-[-0.4px] leading-tight">Welcome back, {profile?.firstName || 'Researcher'} 👋</h1>
+          <h1 className="text-[22px] font-semibold text-charcoal tracking-[-0.4px] leading-tight">{profile?.firstName ? `Welcome back, ${profile.firstName} 👋` : 'Welcome, New User 👋'}</h1>
           <p className="text-[13.5px] text-moss/70 mt-1">You have {pendingSurveys} surveys pending sync · {surveys[0]?.projectName || 'Borneo Rainforest project'} updated recently</p>
         </div>
       </div>
@@ -65,7 +75,7 @@ export default function Dashboard() {
           <div className="text-[26px] font-semibold text-charcoal tracking-[-0.8px] leading-none font-mono">{totalSpecies}</div>
           <div className="flex items-center gap-1 mt-1.5 text-[12px] text-moss font-medium">
             <TrendingUp className="w-3 h-3" />
-            <span>+12 this month</span>
+            <span>+{speciesThisMonth} this month</span>
           </div>
         </div>
         

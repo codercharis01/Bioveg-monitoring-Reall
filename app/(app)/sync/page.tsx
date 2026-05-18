@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSurveyStore, SurveySession } from '@/lib/store';
 import { useSyncEngine } from '@/hooks/useSyncEngine';
 import { cn } from '@/lib/utils';
-import { Cloud, Wifi, WifiOff, CloudUpload, ArrowRight, UserPlus, CloudOff, Eye, EyeOff, Mail, CheckCircle2, UserCheck } from 'lucide-react';
+import { Cloud, Wifi, WifiOff, CloudUpload, ArrowRight, UserPlus, CloudOff, Eye, EyeOff, Mail, CheckCircle2, UserCheck, Clock, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 type AuthFlow = 'login' | 'register' | 'verify' | 'forgot' | 'reset-sent';
@@ -342,17 +342,30 @@ export default function SyncPage() {
           <div className="divide-y divide-forest/10 max-h-[400px] overflow-y-auto">
             {surveys.map((survey: SurveySession, index: number) => {
               const isSynced = survey?.status === 'Synced';
+              const isError = survey?.status === 'Error' as any; // Allow for 'Error' state if added later
               return (
                 <div key={survey?.id || index} className="flex items-center gap-4 p-4 hover:bg-slate-50 transition-colors">
-                  <div className={cn("w-2 h-2 rounded-full flex-shrink-0", isSynced ? "bg-sage" : "bg-amber-500")} />
+                  <div className={cn("w-2 h-2 rounded-full flex-shrink-0", isSynced ? "bg-sage" : isError ? "bg-red-500" : "bg-amber-500")} />
                   <div className="flex-1 min-w-0">
                     <div className="text-[14px] font-medium text-charcoal truncate">{survey?.projectName || 'Unnamed'}</div>
                     <div className="text-[12px] text-moss/60 truncate mt-0.5">{survey?.speciesList?.length || 0} species · {survey?.date || 'Unknown Date'}</div>
                   </div>
-                  <div className="text-[12px] font-medium px-2.5 py-1 rounded-md border text-right">
-                    {isSynced 
-                      ? <span className="text-forest border-transparent">Synced</span> 
-                      : <span className="text-amber-700 bg-amber-50 border-amber-200">Pending</span>}
+                  <div className="flex items-center gap-2">
+                    <div className={cn("text-[12px] font-medium px-2.5 py-1 rounded-md border flex items-center gap-1.5", 
+                      isSynced ? "text-forest border-transparent bg-emerald-50/50" : isError ? "text-red-700 bg-red-50 border-red-200" : "text-amber-700 bg-amber-50 border-amber-200")}>
+                      {isSynced ? <CheckCircle2 className="w-3.5 h-3.5" /> : isError ? <CloudOff className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                      <span>{isSynced ? 'Synced' : isError ? 'Error' : 'Pending'}</span>
+                    </div>
+                    {!isSynced && !identity.isGuest && (
+                      <button 
+                        onClick={handleSyncAll}
+                        disabled={syncing}
+                        className="p-1.5 text-forest hover:bg-forest/10 rounded-md transition-colors disabled:opacity-50"
+                        title="Sync manually"
+                      >
+                        <RefreshCw className={cn("w-4 h-4", syncing && "animate-spin")} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );

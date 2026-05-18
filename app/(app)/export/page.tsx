@@ -4,12 +4,22 @@ import { useState, useMemo } from 'react';
 import { Download, FileText, Filter, ChevronDown, Calendar, Search } from 'lucide-react';
 import { useSurveyStore } from '@/lib/store';
 import { cn, formatCoordinate } from '@/lib/utils';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function ExportPage() {
   const surveys = useSurveyStore(state => state.surveys) || [];
   const preferences = useSurveyStore(state => state.preferences);
   const [selectedFormat, setSelectedFormat] = useState('csv');
   const [selectedSurveyId, setSelectedSurveyId] = useState(surveys[0]?.id || '');
+  const [toastMsg, setToastMsg] = useState('');
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(''), 3000);
+  };
+
 
   const selectedSurvey = surveys.find(s => s?.id === selectedSurveyId) || surveys[0];
 
@@ -211,35 +221,98 @@ export default function ExportPage() {
           alert(`Previewing full report for ${selectedSurvey.projectName}...\n\nResearchers: ${selectedSurvey.researcherName}\nTotal Plots: ${selectedSurvey.numQuadrats}\nSpecies Recorded: ${selectedSurvey.speciesList?.length || 0}\n\n(A PDF generation window would typically open here.)`);
         }}>Preview full report</button>
         <button className="btn-ghost" onClick={() => {
-          if (!selectedSurvey) return alert('No survey selected.');
+          if (!selectedSurvey) return showToast('No survey selected.');
           navigator.clipboard.writeText(`${window.location.origin}/surveys/${selectedSurvey.id}`);
-          alert("Survey link copied to clipboard!");
+          showToast("Survey link copied to clipboard!");
         }}>Share link</button>
+
+        {toastMsg && (
+          <div className="fixed bottom-4 right-4 bg-charcoal text-white px-4 py-2 rounded-lg shadow-lg text-[14px]">
+            {toastMsg}
+          </div>
+        )}
+
         <button className="btn-primary" onClick={() => {
-          if (!selectedSurvey) return alert('No survey selected.');
-          let dataStr = "";
-          let mime = "";
-          let ext = "";
+          if (!selectedSurvey) return showToast('No survey selected.');
+          
           if (selectedFormat === 'csv') {
-            dataStr = `Project Name,Ecosystem,Lat,Lng,Sample Site,Date\n${selectedSurvey.projectName || ''},${selectedSurvey.ecosystemType || ''},${selectedSurvey.lat || ''},${selectedSurvey.lng || ''},${selectedSurvey.sampleSite || ''},${selectedSurvey.date || ''}\n`;
-            mime = "text/csv";
-            ext = "csv";
-          } else {
-            dataStr = JSON.stringify(selectedSurvey, null, 2);
-            mime = "application/json";
-            ext = "json";
-            if (selectedFormat === 'pdf') {
-              alert("PDF export is simulated. Downloading JSON representation instead.");
-              ext = "pdf.json";
-            } else if (selectedFormat === 'excel') {
-              alert("Excel export is simulated. Downloading JSON instead.");
-              ext = "xlsx.json";
+            let csvStr = `Scientific Name,Family,Stratum,Notes,Total,${Array.from({length: selectedSurvey.numQuadrats}).map((_, i) => 'Q'+(i+1)).join(',')}\n`;
+            selectedSurvey.speciesList.forEach(s => {
+              csvStr += `"${s.name}","${s.family || ''}","${s.stratum || ''}","${s.notes || ''}",${s.quadrats.reduce((a,b)=>a+b,0)},${s.quadrats.join(',')}\n`;
+            });
+            const blob = new Blob([csvStr], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = `${selectedSurvey.projectName}.csv`;
+            a.click(); URL.revokeObjectURL(url);
+          } else if (selectedFormat === 'excel') {
+            const speciesData = selectedSurvey.speciesList.map(s => ({
+              'Scientific Name': s.name,
+              'Family': s.family,
+              'Stratum': s.stratum,
+              'Notes': s.notes,
+              'Total Abundance': s.quadrats.reduce((a, b) => a + b, 0),
+              ...Object.fromEntries(s.quadrats.map((val, idx) => [`Q${idx + 1}`, val]))
+            }));
+            const metadata = [{ 
+              'Project': selectedSurvey.projectName, 
+              'Ecosystem': selectedSurvey.ecosystemType,
+              'Date': selectedSurvey.date 
+            }];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(metadata), "Metadata");
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(speciesData), "Species Data");
+            XLSX.writeFile(wb, `${selectedSurvey.projectName}.xlsx`);
+          } else if (selectedFormat === 'pdf') {
+            const doc = new jsPDF();
+            doc.setFontSize(20);
+            doc.text(`${selectedSurvey.projectName} Report`, 14, 22);
+            doc.setFontSize(11);
+            doc.setTextColor(100);
+            doc.text(`Date: ${selectedSurvey.date} - Ecosystem: ${selectedSurvey.ecosystemType}`, 14, 30);
+            doc.text(`Researcher: ${selectedSurvey.researcherName || 'Anonymous'}`, 14, 36);
+            
+            if (selectedSurvey.lat !== undefined && selectedSurvey.lng !== undefined) {
+              doc.text(`Coordinates: ${formatCoordinate(selectedSurvey.lat, false, preferences.coordinateFormat)}, ${formatCoordinate(selectedSurvey.lng, true, preferences.coordinateFormat)}`, 14, 42);
             }
+            
+            doc.setFontSize(14);
+            doc.setTextColor(0);
+            doc.text("Diversity Indices & Metadata", 14, 55);
+            
+            autoTable(doc, {
+              startY: 60,
+              head: [['Parameter', 'Value', 'Parameter', 'Value']],
+              body: [
+                ['Species Richness', speciesRichness.toString(), "Shannon (H')", mockIndices.shannon],
+                ['Families Recorded', familiesRecorded.toString(), 'Simpson (D)', mockIndices.simpson],
+                ['Sample Area', `${totalArea.toFixed(3)} ha`, "Pielou's J", mockIndices.pielou],
+              ],
+              theme: 'grid',
+              headStyles: { fillColor: [40, 80, 60] }
+            });
+
+            let nextY = (doc as any).lastAutoTable.finalY + 15;
+            
+            doc.setFontSize(14);
+            doc.text("Species Inventory", 14, nextY);
+            
+            const tableData = selectedSurvey.speciesList.map(s => [
+              s.name, 
+              s.family || '—', 
+              s.stratum || '—', 
+              s.quadrats.reduce((a, b) => a + b, 0).toString()
+            ]);
+            
+            autoTable(doc, {
+              startY: nextY + 5,
+              head: [['Scientific Name', 'Family', 'Stratum', 'Total Abundance']],
+              body: tableData,
+              theme: 'striped',
+              headStyles: { fillColor: [39, 82, 58] }
+            });
+            
+            doc.save(`${selectedSurvey.projectName}.pdf`);
           }
-          const blob = new Blob([dataStr], { type: mime });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = `bioveg-monitoring-export-${selectedSurvey.id}.${ext}`; 
-          document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         }}>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 10l4 4 4-4M8 14V2M2 14h12"/></svg>
           Download {selectedFormat.toUpperCase()}

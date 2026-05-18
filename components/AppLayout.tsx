@@ -83,67 +83,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const prefs = useSurveyStore(state => state.preferences);
 
   useEffect(() => {
-    let shouldLogOutAndRedirect = false;
-    
-    if (typeof window !== 'undefined' && !(window as any)._hasCheckedNavigation) {
-      (window as any)._hasCheckedNavigation = true;
-      // Check if it's a completely new session tab
-      if (typeof sessionStorage !== 'undefined') {
-        if (!sessionStorage.getItem('in_session')) {
-          sessionStorage.setItem('in_session', 'true');
-          shouldLogOutAndRedirect = true;
-        }
-      }
-      
-      // Check if it's a reload
-      if (typeof performance !== 'undefined') {
-        const navEntries = performance.getEntriesByType('navigation');
-        if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
-          shouldLogOutAndRedirect = true;
-        }
-      }
-    }
-    
-    if (shouldLogOutAndRedirect) {
-      const handleSyncAndLogOut = async () => {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const user = session?.user;
-          if (user) {
-            const state = useSurveyStore.getState();
-            const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
-            if (pendingSurveys.length > 0) {
-              const updates = pendingSurveys.map(survey => ({
-                id: survey.id,
-                user_id: user.id,
-                device_id: state.identity.local_device_id,
-                survey_data: survey,
-                sync_status: "Synced",
-                updated_at: new Date().toISOString()
-              }));
-              
-              const { error: dbError } = await supabase.from('surveys').upsert(updates);
-              if (!dbError) {
-                pendingSurveys.forEach(survey => {
-                  state.updateSurvey(survey.id, { status: "Synced" });
-                });
-                state.setLastSyncedAt(Date.now());
-              }
-            }
-          }
-          await supabase.auth.signOut();
-        } catch (e) {
-          console.error(e);
-        } finally {
-          useSurveyStore.getState().setIdentity({ isGuest: false });
-          window.location.href = '/';
-        }
-      };
-      handleSyncAndLogOut();
-    }
-  }, []);
-
-  useEffect(() => {
     let watchId: number | null = null;
     
     // Background tracking simulation

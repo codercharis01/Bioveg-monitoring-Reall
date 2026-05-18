@@ -112,28 +112,49 @@ export default function SurveyDetails({ params }: { params: Promise<{ id: string
       </div>
 
       <div className="bg-white border border-forest/10 rounded-2xl shadow-sm overflow-hidden mb-6">
-        <div className="p-5 border-b border-forest/10 bg-mint/50 flex justify-between items-center">
+        <div className="p-5 border-b border-forest/10 bg-mint/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-[15px] font-semibold text-charcoal">Site Location</h3>
-            <p className="text-[13px] text-moss/70 mt-0.5">GPS location of the site.</p>
+            <p className="text-[13px] text-moss/70 mt-0.5">Click the map or use the button below to update GPS location.</p>
           </div>
-          {survey.lat && survey.lng && (
-             <div className="text-[12px] font-mono text-moss/80 bg-white px-3 py-1.5 rounded-lg border border-forest/10 shadow-sm">
-               {formatCoordinate(survey.lat, false, preferences.coordinateFormat)}, {formatCoordinate(survey.lng, true, preferences.coordinateFormat)}
-             </div>
-          )}
+          <div className="flex items-center gap-3">
+             <button
+               onClick={() => {
+                 if (navigator.geolocation) {
+                   navigator.geolocation.getCurrentPosition(
+                     (position) => {
+                       updateSurvey(survey.id, { 
+                         lat: position.coords.latitude, 
+                         lng: position.coords.longitude 
+                       });
+                     },
+                     (error) => {
+                       console.error("Error obtaining location:", error);
+                     },
+                     { enableHighAccuracy: preferences.highAccuracyMode }
+                   );
+                 }
+               }}
+               className="bg-forest/10 hover:bg-forest/20 text-forest px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors"
+             >
+               Current Location
+             </button>
+             {(survey.lat !== undefined && survey.lng !== undefined) && (
+                <div className="text-[12px] font-mono text-moss/80 bg-white px-3 py-1.5 rounded-lg border border-forest/10 shadow-sm">
+                  {formatCoordinate(survey.lat, false, preferences.coordinateFormat)}, {formatCoordinate(survey.lng, true, preferences.coordinateFormat)}
+                </div>
+             )}
+          </div>
         </div>
         <div className="w-full h-[300px] bg-slate-100 flex items-center justify-center relative">
-          {(survey.lat && survey.lng) ? (
-            <LeafletMap 
-              lat={survey.lat.toString()} 
-              lng={survey.lng.toString()} 
-              setPos={() => {}} // readonly
-              programmaticUpdate={0}
-            />
-          ) : (
-             <p className="text-slate-400 text-sm">No GPS data recorded for this survey</p>
-          )}
+          <LeafletMap 
+            lat={survey.lat?.toString() || ''} 
+            lng={survey.lng?.toString() || ''} 
+            setPos={(lat, lng) => {
+               updateSurvey(survey.id, { lat: parseFloat(lat), lng: parseFloat(lng) });
+            }}
+            programmaticUpdate={0}
+          />
         </div>
       </div>
 

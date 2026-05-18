@@ -86,11 +86,11 @@ export const useSurveyStore = create<SurveyState>()(
   persist(
     (set, get) => ({
       profile: {
-        firstName: 'Martyna',
-        lastName: 'Martyns-Yellowe',
-        title: 'MSc.',
-        role: 'Lead Researcher',
-        institution: 'University of Nigeria, Nsukka',
+        firstName: '',
+        lastName: '',
+        title: '',
+        role: '',
+        institution: '',
       },
       identity: {
         guest_user_id: null,
@@ -108,45 +108,8 @@ export const useSurveyStore = create<SurveyState>()(
     backgroundTracking: false,
     coordinateFormat: 'DD',
   },
-  surveys: [
-    {
-      id: 'mock-1',
-      projectName: 'Northern Ridge Transect 3',
-      siteName: 'Montane Forest Region D',
-      ecosystemType: 'Montane Forest',
-      vegetationType: 'Broadleaf',
-      sampleSite: 'Plot A - North Slopes',
-      samplingMethod: 'Systematic Sampling',
-      quadratSize: '5 × 5 m (25 m²)',
-      transectLength: 100,
-      samplingInterval: 10,
-      researcherName: 'Dr. Jane Doe',
-      date: 'Oct 24, 2026',
-      status: 'Pending',
-      numQuadrats: 50,
-      lat: 4.8156,
-      lng: 7.0498,
-      speciesList: [
-        {
-          id: 's-1',
-          name: 'Quercus alba',
-          family: 'Fagaceae',
-          quadrats: [1, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 2],
-          stratum: 'Canopy (>20m)',
-          notes: 'Dominant'
-        },
-        {
-          id: 's-2',
-          name: 'Acer rubrum',
-          family: 'Sapindaceae',
-          quadrats: [0, 4, 0, 1, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-          stratum: 'Sub-canopy',
-          notes: 'Co-dominant'
-        }
-      ]
-    }
-  ],
-
+  surveys: [],
+  
   addSurvey: (config) => {
     const id = Date.now().toString();
     const newSession: SurveySession = {

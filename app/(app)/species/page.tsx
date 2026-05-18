@@ -10,6 +10,9 @@ export default function SpeciesEntry() {
   const surveys = useSurveyStore(state => state.surveys);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>(surveys[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
+  const [speciesStratumFilter, setSpeciesStratumFilter] = useState('');
+  const [speciesNotesSearch, setSpeciesNotesSearch] = useState('');
+  const [showSpeciesFilters, setShowSpeciesFilters] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
   const [siteFilter, setSiteFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -38,10 +41,18 @@ export default function SpeciesEntry() {
 
   let filteredSpecies = speciesList.filter((s) => {
     const lowerQuery = searchQuery.toLowerCase();
-    return s.name.toLowerCase().includes(lowerQuery) || 
+    const searchMatch = s.name.toLowerCase().includes(lowerQuery) || 
            (s.localName && s.localName.toLowerCase().includes(lowerQuery)) ||
            (s.family && s.family.toLowerCase().includes(lowerQuery));
+           
+    const stratumMatch = !speciesStratumFilter || (s.stratum && s.stratum.toLowerCase() === speciesStratumFilter.toLowerCase());
+    const notesMatch = !speciesNotesSearch || (s.notes && s.notes.toLowerCase().includes(speciesNotesSearch.toLowerCase()));
+    
+    return searchMatch && stratumMatch && notesMatch;
   });
+
+  // Extract unique strata for the filter dropdown
+  const strataOptions = Array.from(new Set(speciesList.map(s => s.stratum))).filter(Boolean);
 
   if (sortConfig !== null) {
     filteredSpecies.sort((a, b) => {
@@ -219,32 +230,75 @@ export default function SpeciesEntry() {
         <div className="space-y-2 min-w-0">
           {selectedSurvey ? (
             <>
-              <div className="species-toolbar">
-                <div className="search-field">
-                  <Search />
-                  <input 
-                    type="text" 
-                    placeholder="Search species in this project…" 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
+              <div className="flex flex-col gap-3 py-3 px-4 bg-white border border-forest/10 rounded-xl mb-4 shadow-sm">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-moss/50" />
+                    <input 
+                      type="text" 
+                      placeholder="Search species name, local name or family..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[13px] text-charcoal outline-none focus:border-forest/40 focus:bg-white transition-all"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowSpeciesFilters(!showSpeciesFilters)}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 border rounded-lg text-[13px] font-medium transition-colors whitespace-nowrap",
+                        (speciesStratumFilter || speciesNotesSearch)
+                          ? "bg-forest/5 border-forest/20 text-forest"
+                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                      )}
+                    >
+                      <Filter className="w-4 h-4" />
+                      Filter
+                    </button>
+                    <button
+                      onClick={exportToCSV}
+                      className="hidden sm:flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors whitespace-nowrap"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export CSV
+                    </button>
+                    <Link 
+                      href={`/surveys/${selectedSurvey.id}/record`}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-forest hover:bg-forest-mid text-white rounded-lg text-[13px] font-medium transition-colors whitespace-nowrap"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Species
+                    </Link>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2.5 w-full sm:w-auto">
-                  <button
-                    onClick={exportToCSV}
-                    className="btn-ghost hidden sm:flex"
-                  >
-                    <Download className="w-[15px] h-[15px]" />
-                    Export CSV
-                  </button>
-                  <Link 
-                    href={`/surveys/${selectedSurvey.id}/record`}
-                    className="bg-forest hover:bg-forest-mid text-white flex items-center gap-1.5 px-3 py-1.5 md:px-[14px] md:py-[7px] rounded-lg text-[12px] md:text-[13px] font-medium transition-colors"
-                  >
-                    <Plus className="w-[14px] h-[14px]" />
-                    Add Species
-                  </Link>
-                </div>
+                
+                {showSpeciesFilters && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div>
+                      <label className="block text-[11px] font-medium text-moss/70 mb-1">Filter by Stratum</label>
+                      <select
+                        value={speciesStratumFilter}
+                        onChange={(e) => setSpeciesStratumFilter(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-[13px] text-charcoal outline-none appearance-none"
+                      >
+                        <option value="">All Strata</option>
+                        {strataOptions.map(stratum => (
+                          <option key={stratum} value={stratum}>{stratum}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-moss/70 mb-1">Search Notes</label>
+                      <input 
+                        type="text" 
+                        placeholder="Filter by notes..." 
+                        value={speciesNotesSearch}
+                        onChange={(e) => setSpeciesNotesSearch(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-[13px] text-charcoal outline-none focus:border-forest/40 transition-all"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Species Table */}

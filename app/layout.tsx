@@ -1,9 +1,16 @@
-import type {Metadata} from 'next';
+import type {Metadata, Viewport} from 'next';
 import { DM_Sans, DM_Mono } from 'next/font/google';
 import './globals.css'; // Global styles
 
 const dmSans = DM_Sans({ subsets: ['latin'], variable: '--font-sans' });
 const dmMono = DM_Mono({ weight: ['400', '500'], subsets: ['latin'], variable: '--font-mono' });
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export const metadata: Metadata = {
   title: 'Bioveg Monitoring',
@@ -13,7 +20,7 @@ export const metadata: Metadata = {
 export default function RootLayout({children}: {children: React.ReactNode}) {
   return (
     <html lang="en" className={`${dmSans.variable} ${dmMono.variable}`}>
-      <body suppressHydrationWarning className="font-sans bg-cream text-charcoal">{children}</body>
+      <body suppressHydrationWarning className="font-sans bg-cream text-charcoal overflow-x-hidden">{children}</body>
     </html>
   );
 }
