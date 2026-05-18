@@ -148,14 +148,19 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const handleLogOut = async () => {
     setIsLoggingOut(true);
     try {
-      // Clear store and identity immediately - this clears the UI
+      // 1. Clear store immediately to stop any sync processes or data leakage
       useSurveyStore.getState().resetStore();
       
-      // Fire sign out but don't wait for the network to return to proceed with UI change
-      supabase.auth.signOut();
+      // 2. Perform sign out
+      await supabase.auth.signOut();
       
-      // Force immediate redirect using replace to clear the history stack
-      window.location.replace('/');
+      // 3. Clear all potential localStorage manually as a safety measure
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('ecosurvey-storage-v5');
+      }
+      
+      // 4. Force full page reload to home to ensure clean context
+      window.location.href = '/';
     } catch (e) { 
       console.error("Logout error:", e);
       window.location.href = '/';
@@ -281,7 +286,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-sage-pale rounded-full text-[12px] font-medium text-forest-mid border border-moss/20">
               <div className="w-1.5 h-1.5 rounded-full bg-moss" />
-              {lastSyncedAt ? `Synced ${formatDistanceToNow(lastSyncedAt)} ago` : 'Waiting to sync...'}
+              {(() => {
+                if (!lastSyncedAt) return 'Waiting to sync...';
+                try {
+                  return `Synced ${formatDistanceToNow(lastSyncedAt)} ago`;
+                } catch (e) {
+                  return 'Recently synced';
+                }
+              })()}
             </div>
             <Link href="/surveys/new" className="flex items-center gap-1.5 px-3.5 py-1.5 bg-forest hover:bg-forest-mid text-white rounded-md text-[13px] font-medium transition-colors">
               <PlusCircle className="w-[15px] h-[15px]" />

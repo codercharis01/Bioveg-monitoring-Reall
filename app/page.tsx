@@ -30,14 +30,16 @@ export default function Home() {
 
   // Check session and only redirect after checking for reload/new session signout
   useEffect(() => {
-    // Check hash for specific errors
+    // Check hash and query for specific flows
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
+      const searchParams = new URL(window.location.href).searchParams;
+      
+      if (hash.includes('type=recovery') || searchParams.get('view') === 'recovery') {
+         setTimeout(() => setView('update-password'), 0);
+      }
+      
       if (hash) {
-        if (hash.includes('type=recovery')) {
-           setTimeout(() => setView('update-password'), 0);
-        }
-        
         const hashParams = new URLSearchParams(hash.substring(1));
         const errorDesc = hashParams.get('error_description');
         const hasAccessToken = hashParams.has('access_token');
@@ -146,11 +148,11 @@ export default function Home() {
       }
       
       const pendingSurveys = state.surveys.filter(s => s.status === 'Pending' && !s.id.startsWith('mock-'));
-      if (pendingSurveys.length > 0) {
+      if (pendingSurveys.length > 0 && user) {
         try {
           const updates = pendingSurveys.map(survey => ({
               id: survey.id,
-              user_id: user?.id,
+              user_id: user.id,
               device_id: state.identity.local_device_id,
               survey_data: survey,
               sync_status: "Synced",
@@ -164,8 +166,8 @@ export default function Home() {
             });
             state.setLastSyncedAt(Date.now());
           }
-        } catch (e) {
-          console.error(e);
+        } catch (syncErr) {
+          console.error("Auto-sync error during sign-in:", syncErr);
         }
       }
       
@@ -175,6 +177,8 @@ export default function Home() {
 
       router.replace('/dashboard');
     } catch (err: any) {
+      setLoading(false);
+      console.error("SignIn error:", err);
       if (err.message === 'Failed to fetch') {
         setError("Network error: Could not reach authentication server. Check your internet.");
       } else if (err.message === 'Invalid login credentials') {
@@ -182,7 +186,6 @@ export default function Home() {
       } else {
         setError(err.message);
       }
-      setLoading(false);
     }
   };
 
@@ -273,12 +276,13 @@ export default function Home() {
     
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/`,
+        redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/?view=recovery`,
       });
       if (error) throw error;
       setLoading(false);
       setView('reset-sent');
     } catch (err: any) {
+      console.error("ForgotPassword error:", err);
       setError(err.message);
       setLoading(false);
     }
@@ -306,12 +310,16 @@ export default function Home() {
 
       if (error) throw error;
       
-      await supabase.auth.signOut();
+      // Successfully updated password
+      setLoading(false);
       setView('login');
       setError("Password updated successfully. Please sign in with your new password.");
+      
+      // Optional: auto sign out to force fresh login if library didn't
+      supabase.auth.signOut();
     } catch (err: any) {
+      console.error("UpdatePassword error:", err);
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };

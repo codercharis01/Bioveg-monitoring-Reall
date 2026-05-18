@@ -192,9 +192,12 @@ export const useSurveyStore = create<SurveyState>()(
   })),
 
   replaceSurveys: (surveys) => set((state) => {
-    // Keep mock data if not already present
-    const hasMock = surveys.some(s => s.id === 'mock-1');
-    return { surveys: hasMock ? surveys : [...surveys, MOCK_SURVEY] };
+    // If the user has no surveys at all, show the mock survey so they can see functionality
+    if (surveys.length === 0) {
+      return { surveys: [MOCK_SURVEY] };
+    }
+    // If they have their own surveys, only show those (remove the mock)
+    return { surveys };
   }),
 
   resetStore: () => set(() => ({
@@ -211,7 +214,9 @@ export const useSurveyStore = create<SurveyState>()(
       local_device_id: null,
       local_session_token: null,
       isGuest: true,
-    }
+    },
+    lastSyncedAt: undefined,
+    draftSurvey: undefined
   })),
 
   addSpecies: (surveyId, quadratIndex, { name, family, localName, notes, stratum }) => set((state) => {

@@ -15,9 +15,13 @@ export default function Dashboard() {
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
   const speciesThisMonth = surveys.reduce((acc, survey) => {
-    const surveyDate = new Date(survey.date);
-    if (surveyDate.getMonth() === currentMonth && surveyDate.getFullYear() === currentYear) {
-      return acc + (survey?.speciesList?.length || 0);
+    try {
+      const surveyDate = new Date(survey.date);
+      if (!isNaN(surveyDate.getTime()) && surveyDate.getMonth() === currentMonth && surveyDate.getFullYear() === currentYear) {
+        return acc + (survey?.speciesList?.length || 0);
+      }
+    } catch (e) {
+      // Skip invalid dates
     }
     return acc;
   }, 0);

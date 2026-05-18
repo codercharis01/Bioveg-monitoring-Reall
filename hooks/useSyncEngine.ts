@@ -20,6 +20,7 @@ export function useSyncEngine() {
   const resetStore = useSurveyStore(state => state.resetStore);
 
   const fetchUserSurveys = useCallback(async (uid: string) => {
+    if (!uid) return;
     try {
       const { data, error } = await supabase
         .from('surveys')
@@ -30,7 +31,7 @@ export function useSyncEngine() {
 
       if (data) {
         const surveys = data.map(d => d.survey_data);
-        replaceSurveys(surveys);
+        replaceSurveys(surveys || []);
       }
     } catch (err: any) {
       console.error("Fetch error:", err);

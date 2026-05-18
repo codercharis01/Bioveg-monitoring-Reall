@@ -1,6 +1,6 @@
 'use client';
 
-import { use } from 'react';
+import { use, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, notFound } from 'next/navigation';
 import { ArrowLeft, Clock, UploadCloud, FileDown, Leaf, Edit, Trash } from 'lucide-react';
@@ -23,14 +23,26 @@ export default function SurveyDetails({ params }: { params: Promise<{ id: string
   
   const survey = surveys.find(s => s.id === resolvedParams.id);
 
+  // Use useEffect for redirection to avoid side-effects in render
+  useEffect(() => {
+    if (!survey) {
+      router.replace('/surveys');
+    }
+  }, [survey, router]);
+
   if (!survey) {
-    return notFound();
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-forest"></div>
+        <p className="text-moss text-sm">Loading or redirecting...</p>
+      </div>
+    );
   }
 
   const handleDelete = () => {
     if (confirm("Are you sure you want to delete this survey?")) {
       deleteSurvey(survey.id);
-      router.push('/surveys');
+      // Let the useEffect handle the redirection when the store updates
     }
   };
 
