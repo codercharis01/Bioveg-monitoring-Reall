@@ -175,7 +175,9 @@ export default function Home() {
 
       router.replace('/dashboard');
     } catch (err: any) {
-      if (err.message === 'Invalid login credentials') {
+      if (err.message === 'Failed to fetch') {
+        setError("Network error: Could not reach authentication server. Check your internet.");
+      } else if (err.message === 'Invalid login credentials') {
         setError("Email does not exist or incorrect password. Create an account?");
       } else {
         setError(err.message);
@@ -248,7 +250,9 @@ export default function Home() {
       setLoading(false);
       setView('verify');
     } catch (err: any) {
-      if (err.message.includes('already registered')) {
+      if (err.message === 'Failed to fetch') {
+        setError("Network error: Could not reach authentication server. Check your internet.");
+      } else if (err.message.includes('already registered')) {
         setError("User already exists, Sign In?");
       } else {
         setError(err.message);

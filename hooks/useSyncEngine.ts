@@ -34,7 +34,11 @@ export function useSyncEngine() {
       }
     } catch (err: any) {
       console.error("Fetch error:", err);
-      setError(err.message);
+      if (err.message === 'Failed to fetch') {
+         setError("Network error: Could not fetch user data. Check your internet connection.");
+      } else {
+         setError(err.message);
+      }
     }
   }, [replaceSurveys]);
 
@@ -67,7 +71,12 @@ export function useSyncEngine() {
       setLastSyncedAt(Date.now());
 
     } catch (err: any) {
-      setError(err.message);
+      console.error("Sync error:", err);
+      if (err.message === 'Failed to fetch') {
+        setError("Network error: Could not reach sync server. Please check your internet connection.");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setSyncing(false);
     }
@@ -88,15 +97,25 @@ export function useSyncEngine() {
 
         if (isGuest) {
           setIdentity({ isGuest: false });
-          // Force a sync of all pending local data
+          // Migrate data and fetch cloud data when transitioning from guest
           await syncData(session.user.id);
-          // And fetch their existing data from cloud
           await fetchUserSurveys(session.user.id);
         }
       } else if (event === 'SIGNED_OUT') {
         resetStore();
       }
     });
+
+    // Check if we are already logged in but haven't fetched data yet
+    const initSync = async () => {
+      if (!isGuest) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          fetchUserSurveys(session.user.id);
+        }
+      }
+    };
+    initSync();
 
     return () => {
       subscription.unsubscribe();

@@ -148,17 +148,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const handleLogOut = async () => {
     setIsLoggingOut(true);
     try {
-      // Clear store and identity immediately
-      const state = useSurveyStore.getState();
-      state.resetStore();
+      // Clear store and identity immediately - this clears the UI
+      useSurveyStore.getState().resetStore();
       
-      // Fire and forget sign out
+      // Fire sign out but don't wait for the network to return to proceed with UI change
       supabase.auth.signOut();
       
-      // Redirect immediately to clear UI state
+      // Force immediate redirect using replace to clear the history stack
       window.location.replace('/');
     } catch (e) { 
-      console.error("Logout process error:", e);
+      console.error("Logout error:", e);
       window.location.href = '/';
     }
   };
