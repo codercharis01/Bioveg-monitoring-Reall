@@ -63,13 +63,29 @@ export default function MapView() {
   const handleGetLocation = () => {
     if (!selectedSurveyId) return alert('Please select a survey first.');
     if (navigator.geolocation) {
-      setProgrammaticUpdate(Date.now());
-      navigator.geolocation.getCurrentPosition((position) => {
-        updateSurvey(selectedSurveyId, {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
-      }, undefined, { enableHighAccuracy: preferences.highAccuracyMode });
+      setIsGeocoding(true);
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        try {
+          const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+          const data = await resp.json();
+          if (data && data.display_name) {
+            updateSurvey(selectedSurveyId, {
+              lat,
+              lng,
+              sampleSite: data.display_name
+            });
+          } else {
+            updateSurvey(selectedSurveyId, { lat, lng });
+          }
+        } catch (e) {
+          updateSurvey(selectedSurveyId, { lat, lng });
+        } finally {
+          setIsGeocoding(false);
+          setProgrammaticUpdate(Date.now());
+        }
+      }, () => { setIsGeocoding(false); }, { enableHighAccuracy: preferences.highAccuracyMode });
     }
   };
 
@@ -142,9 +158,21 @@ export default function MapView() {
           <MapComponent 
             selectedSurveyId={selectedSurveyId} 
             programmaticUpdate={programmaticUpdate}
-            onMapClick={(lat, lng) => {
+            onMapClick={async (lat, lng) => {
               if (selectedSurveyId) {
                 updateSurvey(selectedSurveyId, { lat, lng });
+                setIsGeocoding(true);
+                try {
+                  const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+                  const data = await resp.json();
+                  if (data && data.display_name) {
+                    updateSurvey(selectedSurveyId, { sampleSite: data.display_name });
+                  }
+                } catch (e) {
+                  // ignore
+                } finally {
+                  setIsGeocoding(false);
+                }
               }
             }}
           />

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSurveyStore } from '@/lib/store';
 import { Download, ChevronDown, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -8,6 +8,11 @@ import { calculatePhytoParameters, exportToCSV, exportToPDF } from '@/lib/export
 
 export default function PhytosociologyParameters() {
   const surveys = useSurveyStore(state => state.surveys);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const profile = useSurveyStore(state => state.profile);
   const preferences = useSurveyStore(state => state.preferences);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>('all');
@@ -65,11 +70,11 @@ export default function PhytosociologyParameters() {
     setSortConfig({ key, direction });
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (speciesList.length === 0) return;
 
     if (targetSurveys.length === 1) {
-      exportToPDF(`${targetSurveys[0].projectName}_Phyto_Report`, targetSurveys[0], profile, preferences);
+      await exportToPDF(`${targetSurveys[0].projectName}_Phyto_Report`, targetSurveys[0], profile, preferences);
     } else {
       const headers = ["No.", "Species Name", "Family", "N", "A", "F(%)", "D(m²)", "R.A(%)", "R.D(%)", "R.F(%)", "A/F", "IVI"];
       const rows = sortedSpecies.map((m, i) => [
@@ -106,6 +111,15 @@ export default function PhytosociologyParameters() {
   let sumRowRF = computedTotals.RF;
   let sumRowAF = computedTotals.AF;
   let sumRowIVI = computedTotals.IVI;
+
+  if (!mounted) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-forest"></div>
+        <p className="text-moss text-sm">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1200px] mx-auto pb-10 space-y-6">

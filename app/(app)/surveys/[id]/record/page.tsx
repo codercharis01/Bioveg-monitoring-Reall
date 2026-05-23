@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, use } from 'react';
+import { useState, use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Plus, Scan, Minus, ArrowLeft } from 'lucide-react';
@@ -17,6 +17,11 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
   
   const survey = surveys.find(s => s.id === resolvedParams.id);
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [currentQuadrat, setCurrentQuadrat] = useState(0);
   const [newSpeciesName, setNewSpeciesName] = useState('');
   const [newSpeciesFamily, setNewSpeciesFamily] = useState('');
@@ -25,11 +30,11 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
   const [isAddingMode, setIsAddingMode] = useState(false);
 
   // Auto-redirect if accessed without config
-  if (!survey) {
+  if (!mounted || !survey) {
     return (
       <div className="p-8 text-center text-slate-500">
-        <p>No active survey found.</p>
-        <button onClick={() => router.push('/surveys/new')} className="mt-4 text-emerald-700 underline">Start New Survey</button>
+        <p>{!mounted ? 'Loading...' : 'No active survey found.'}</p>
+        {mounted && <button onClick={() => router.push('/surveys/new')} className="mt-4 text-emerald-700 underline">Start New Survey</button>}
       </div>
     );
   }
@@ -89,23 +94,23 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
       <div className="bg-mint border-b border-forest/10 px-4 md:px-6 py-3 shadow-sm z-10 sticky top-0">
         <div className="flex justify-between items-center max-w-5xl mx-auto w-full">
           <div className="flex items-center gap-4">
-            <Link 
+            <a 
               href={`/surveys/${surveyId}`}
               className="p-2 rounded-lg hover:bg-mint/50 transition-colors text-moss/70 hover:text-charcoal"
             >
               <ArrowLeft className="w-[18px] h-[18px]" />
-            </Link>
+            </a>
             <div>
               <h1 className="text-[15px] font-semibold text-charcoal">{projectName}</h1>
               <p className="text-[12.5px] text-moss/70">{survey.sampleSite} • Recording {numQuadrats} Quadrats</p>
             </div>
           </div>
-          <Link 
+          <a 
             href={`/surveys/${surveyId}`}
             className="hidden sm:inline-flex bg-white hover:bg-mint/50 text-[13px] text-charcoal px-4 py-1.5 rounded-lg border border-forest/15 transition-colors font-medium items-center shadow-sm"
           >
             Complete Config
-          </Link>
+          </a>
         </div>
       </div>
 
@@ -285,27 +290,29 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
                 
                 return (
                   <div key={species.id} className={cn(
-                    "flex items-center justify-between p-4 rounded-xl border transition-all shadow-sm",
+                    "flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 rounded-xl border transition-all shadow-sm gap-3 sm:gap-4",
                     isPresentInCurrent ? "bg-white border-forest/30" : "bg-mint/10 border-forest/5"
                   )}>
-                    <div className="flex-1 pr-4">
-                      <h3 className={cn("text-[14.5px] font-semibold", isPresentInCurrent ? "text-charcoal" : "text-moss/70")}>
+                    <div className="flex-1 min-w-0 pr-2">
+                      <h3 className={cn("text-[14.5px] sm:text-[15px] font-semibold truncate", isPresentInCurrent ? "text-charcoal" : "text-moss/70")}>
                         {species.name}
                       </h3>
-                      <p className="text-[12.5px] text-moss/60 mt-0.5">
-                        {species.family}
-                        {species.stratum && ` • ${species.stratum}`}
-                        {species.notes && ` • ${species.notes}`}
+                      <p className="text-[12.5px] sm:text-[13px] text-moss/60 mt-0.5 min-w-0 flex flex-wrap gap-x-1.5 gap-y-0.5">
+                        <span className="truncate max-w-full">{species.family}</span>
+                        {species.stratum && <span className="text-moss/40">•</span>}
+                        {species.stratum && <span className="truncate max-w-full">{species.stratum}</span>}
+                        {species.notes && <span className="text-moss/40">•</span>}
+                        {species.notes && <span className="truncate max-w-full">{species.notes}</span>}
                       </p>
                       
                       {/* Show history across quadrats mini-view */}
-                      <div className="flex items-end space-x-1 mt-3 h-4">
+                      <div className="flex items-end space-x-1 mt-2.5 h-4 sm:h-5">
                         {species.quadrats.map((val, qIdx) => (
                           <div 
                             key={qIdx} 
                             style={{ height: val > 0 ? `${Math.min(100, Math.max(30, val * 15))}%` : '30%' }}
                             className={cn(
-                              "w-1.5 rounded-sm transition-all duration-300",
+                              "w-1.5 sm:w-2 rounded-[1px] sm:rounded-sm transition-all duration-300",
                               val > 0 
                                 ? (qIdx === currentQuadrat ? "bg-[#3d7a52]" : "bg-[#7aab8a]") 
                                 : "bg-slate-200"
@@ -315,41 +322,49 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
                       </div>
                     </div>
                     
-                    <div className="flex items-center">
+                    <div className="flex items-center justify-start sm:justify-end shrink-0 w-full sm:w-auto pt-2 sm:pt-0 border-t border-forest/5 sm:border-t-0 mt-1 sm:mt-0">
                       {!isPresentInCurrent ? (
                         <button
                           onClick={() => updateSpeciesPresence(survey.id, species.id, currentQuadrat, 1)}
-                          className="bg-white border border-forest/15 hover:border-forest/40 hover:text-forest hover:bg-mint/30 text-moss/50 w-12 h-12 rounded-xl flex items-center justify-center transition-all shadow-sm"
+                          className="bg-white border border-forest/15 hover:border-forest/40 hover:text-forest hover:bg-mint/30 text-moss/60 w-full sm:w-[150px] h-[48px] rounded-xl flex items-center justify-center transition-all shadow-sm touch-manipulation gap-2"
                           aria-label={`Mark ${species.name} present`}
                         >
-                          <Plus className="w-5 h-5" />
+                          <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <span className="font-medium text-[14px]">Mark Present</span>
                         </button>
                       ) : (
-                        <div className="flex items-center space-x-1.5 bg-mint/20 border border-forest/20 rounded-xl p-1 shadow-sm">
+                        <div className="flex items-center bg-mint/20 border border-forest/20 rounded-xl p-1 shadow-sm w-full sm:w-[150px] justify-between touch-manipulation">
                           <button
                             onClick={() => updateSpeciesPresence(survey.id, species.id, currentQuadrat, species.quadrats[currentQuadrat] - 1)}
-                            className="bg-white hover:bg-mint text-forest w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm border border-forest/10"
+                            className="bg-white hover:bg-mint text-forest w-[48px] h-[44px] sm:w-[44px] rounded-lg flex items-center justify-center transition-all shadow-sm border border-forest/10 shrink-0 touch-manipulation"
                             aria-label="Decrease"
                           >
-                            <Minus className="w-[18px] h-[18px]" />
+                            <Minus className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" />
                           </button>
-                          <input
-                            type="number"
-                            min="0"
-                            value={species.quadrats[currentQuadrat]}
-                            onChange={(e) => {
-                              let val = parseInt(e.target.value, 10);
-                              if (isNaN(val) || val < 0) val = 0;
-                              updateSpeciesPresence(survey.id, species.id, currentQuadrat, val);
-                            }}
-                            className="w-12 text-center text-charcoal font-semibold text-[14px] bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-forest/30 rounded"
-                          />
+                          
+                          <div className="flex-1 flex justify-center px-2 min-w-[50px]">
+                            <input
+                              type="number"
+                              min="0"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              value={species.quadrats[currentQuadrat]}
+                              onChange={(e) => {
+                                let val = parseInt(e.target.value, 10);
+                                if (isNaN(val) || val < 0) val = 0;
+                                updateSpeciesPresence(survey.id, species.id, currentQuadrat, val);
+                              }}
+                              className="w-full max-w-[60px] text-center text-charcoal font-bold text-[16px] bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-forest/30 rounded py-1 m-0 appearance-none touch-manipulation"
+                              style={{ MozAppearance: 'textfield' }}
+                            />
+                          </div>
+                          
                           <button
                             onClick={() => updateSpeciesPresence(survey.id, species.id, currentQuadrat, species.quadrats[currentQuadrat] + 1)}
-                            className="bg-forest hover:bg-forest-mid text-white w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm"
+                            className="bg-forest hover:bg-forest-mid text-white w-[48px] h-[44px] sm:w-[44px] rounded-lg flex items-center justify-center transition-all shadow-sm shrink-0 touch-manipulation"
                             aria-label="Increase"
                           >
-                            <Plus className="w-[18px] h-[18px]" />
+                            <Plus className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" />
                           </button>
                         </div>
                       )}
@@ -372,11 +387,11 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
                 <h3 className="text-[15px] font-semibold text-charcoal">Species Distribution Summary</h3>
                 <p className="text-[13px] text-moss/70 mt-0.5">Frequency and abundance across all quadrats</p>
               </div>
-              <div className="hidden md:block overflow-x-auto">
+              <div className="overflow-x-auto w-full">
                 <table className="w-full text-left whitespace-nowrap min-w-max">
                   <thead className="bg-mint border-b border-forest/10">
                     <tr>
-                      <th className="px-5 py-3.5 text-[11px] font-semibold text-moss/60 uppercase tracking-widest">Species Name</th>
+                      <th className="px-5 py-3.5 text-[11px] font-semibold text-moss/60 uppercase tracking-widest sticky left-0 bg-mint z-10 shadow-[1px_0_0_rgba(20,50,30,0.05)]">Species Name</th>
                       <th className="px-5 py-3.5 text-[11px] font-semibold text-moss/60 uppercase tracking-widest">Family</th>
                       <th className="px-5 py-3.5 text-[11px] font-semibold text-forest uppercase tracking-widest bg-mint/30 border-x border-forest/5 text-center">Total</th>
                       {(() => {
@@ -402,7 +417,7 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
                       
                       return (
                         <tr key={`row-${species.id}`} className="hover:bg-mint/30 transition-colors group">
-                          <td className="px-5 py-4 font-semibold text-charcoal text-[13.5px]">{species.name}</td>
+                          <td className="px-5 py-4 font-semibold text-charcoal text-[13.5px] sticky left-0 bg-white group-hover:bg-mint/30 z-10 shadow-[1px_0_0_rgba(20,50,30,0.05)]">{species.name}</td>
                           <td className="px-5 py-4 text-moss/70 text-[13px]">{species.family}</td>
                           <td className="px-5 py-4 bg-mint/10 group-hover:bg-mint/40 text-forest font-bold text-[14px] border-x border-forest/5 text-center transition-colors">{totalAbundance}</td>
                           {species.quadrats.slice(0, colsToDisplay).map((val, idx) => (
@@ -420,37 +435,16 @@ export default function ActiveSurvey({ params }: { params: Promise<{ id: string 
                   </tbody>
                 </table>
               </div>
-              
-              {/* Mobile Distribution Summary Cards */}
-              <div className="md:hidden flex flex-col gap-2 p-3 bg-slate-50/50">
-                {speciesList.map((s) => (
-                  <div key={`dist-mob-${s.id}`} className="bg-white border border-forest/10 p-3 rounded-lg flex flex-col gap-2">
-                     <div className="flex justify-between items-start">
-                        <div className="font-medium text-charcoal text-[13.5px]">{s.name}</div>
-                        <div className="text-[12px] font-bold text-forest bg-mint/40 px-2 rounded-md border border-forest/10">
-                           Total: {s.quadrats.reduce((sum, val) => sum + val, 0)}
-                        </div>
-                     </div>
-                     <div className="flex flex-wrap gap-1 mt-1">
-                        {s.quadrats.map((amount, i) => amount > 0 && (
-                          <div key={i} className="text-[11px] bg-sage-pale text-forest px-2 py-0.5 rounded border border-forest/10 font-medium">
-                            Q{i + 1}: <span className="font-bold">{amount}</span>
-                          </div>
-                        ))}
-                     </div>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 
           <div className="mt-8 flex justify-center pb-12">
-            <Link 
+            <a 
               href={`/surveys/${surveyId}`}
               className="inline-flex bg-forest hover:bg-forest-mid text-[14px] text-white px-8 py-3 rounded-xl transition-colors font-medium items-center shadow-sm"
             >
               Complete Config
-            </Link>
+            </a>
           </div>
         </div>
       </div>

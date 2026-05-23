@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect } from 'react';
+import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, notFound } from 'next/navigation';
 import { ArrowLeft, Clock, UploadCloud, FileDown, Leaf, Edit, Trash } from 'lucide-react';
@@ -21,20 +21,25 @@ export default function SurveyDetails({ params }: { params: Promise<{ id: string
   const updateSurvey = useSurveyStore(state => state.updateSurvey);
   const preferences = useSurveyStore(state => state.preferences);
   
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const survey = surveys.find(s => s.id === resolvedParams.id);
 
   // Use useEffect for redirection to avoid side-effects in render
   useEffect(() => {
-    if (!survey) {
+    if (mounted && !survey) {
       router.replace('/surveys');
     }
-  }, [survey, router]);
+  }, [survey, router, mounted]);
 
-  if (!survey) {
+  if (!mounted || !survey) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-forest"></div>
-        <p className="text-moss text-sm">Loading or redirecting...</p>
+        <p className="text-moss text-sm">Loading...</p>
       </div>
     );
   }
@@ -57,13 +62,13 @@ export default function SurveyDetails({ params }: { params: Promise<{ id: string
     <div className="max-w-[1200px] mx-auto pb-10 space-y-6">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-          <Link 
+          <a 
             href="/surveys"
             className="text-moss/70 hover:text-charcoal flex items-center gap-1.5 text-[13px] font-medium mb-3 transition-colors w-fit"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to Surveys
-          </Link>
+          </a>
           <div className="flex items-center gap-3 mb-1.5">
             <h1 className="text-[26px] font-semibold text-charcoal tracking-tight">{survey.projectName}</h1>
             <span className={`px-2.5 py-1 text-[11px] font-medium rounded-full ${survey.status === 'Synced' ? 'bg-[#dcf1e6] text-[#27523a]' : 'bg-orange-100 text-orange-800'}`}>
@@ -77,12 +82,12 @@ export default function SurveyDetails({ params }: { params: Promise<{ id: string
         </div>
         
         <div className="flex flex-wrap items-center gap-2.5">
-          <Link 
+          <a 
             href={`/surveys/${survey.id}/record`} 
             className="bg-forest hover:bg-forest-mid text-white px-3 py-2 md:px-4 md:py-2.5 rounded-lg text-[12px] md:text-[13.5px] font-medium transition-colors shadow-sm flex items-center gap-2 md:w-auto w-fit"
           >
             Add Species Record
-          </Link>
+          </a>
           {survey.status === 'Pending' && (
             <button className="bg-white border border-forest/15 hover:bg-mint/50 hover:text-forest text-moss/80 px-4 py-2.5 rounded-lg text-[13.5px] font-medium transition-colors shadow-sm flex items-center gap-2">
               <UploadCloud className="w-[18px] h-[18px]" />
@@ -123,7 +128,7 @@ export default function SurveyDetails({ params }: { params: Promise<{ id: string
         </div>
       </div>
 
-      <div className="bg-white border border-forest/10 rounded-2xl shadow-sm overflow-hidden mb-6">
+      <div className="bg-white border border-forest/10 rounded-2xl shadow-sm overflow-hidden mb-6 flex flex-col">
         <div className="p-5 border-b border-forest/10 bg-mint/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-[15px] font-semibold text-charcoal">Site Location</h3>
@@ -134,11 +139,24 @@ export default function SurveyDetails({ params }: { params: Promise<{ id: string
                onClick={() => {
                  if (navigator.geolocation) {
                    navigator.geolocation.getCurrentPosition(
-                     (position) => {
-                       updateSurvey(survey.id, { 
-                         lat: position.coords.latitude, 
-                         lng: position.coords.longitude 
-                       });
+                     async (position) => {
+                       const posLat = position.coords.latitude;
+                       const posLng = position.coords.longitude;
+                       try {
+                         const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${posLat}&lon=${posLng}&format=json`);
+                         const data = await resp.json();
+                         if (data && data.display_name) {
+                           updateSurvey(survey.id, { 
+                             lat: posLat, 
+                             lng: posLng,
+                             sampleSite: data.display_name
+                           });
+                         } else {
+                           updateSurvey(survey.id, { lat: posLat, lng: posLng });
+                         }
+                       } catch(e) {
+                         updateSurvey(survey.id, { lat: posLat, lng: posLng });
+                       }
                      },
                      (error) => {
                        console.error("Error obtaining location:", error);
@@ -152,18 +170,28 @@ export default function SurveyDetails({ params }: { params: Promise<{ id: string
                Current Location
              </button>
              {(survey.lat !== undefined && survey.lng !== undefined) && (
-                <div className="text-[12px] font-mono text-moss/80 bg-white px-3 py-1.5 rounded-lg border border-forest/10 shadow-sm">
+                <div className="text-[12px] font-mono text-moss/80 bg-white px-3 py-1.5 rounded-lg border border-forest/10 shadow-sm whitespace-nowrap">
                   {formatCoordinate(survey.lat, false, preferences.coordinateFormat)}, {formatCoordinate(survey.lng, true, preferences.coordinateFormat)}
                 </div>
              )}
           </div>
         </div>
-        <div className="w-full h-[300px] bg-slate-100 flex items-center justify-center relative">
+        <div className="w-full h-[300px] bg-slate-100 flex items-center justify-center relative flex-shrink-0 z-0">
           <LeafletMap 
             lat={survey.lat?.toString() || ''} 
             lng={survey.lng?.toString() || ''} 
-            setPos={(lat, lng) => {
+            sampleSite={survey.sampleSite}
+            setPos={async (lat, lng) => {
                updateSurvey(survey.id, { lat: parseFloat(lat), lng: parseFloat(lng) });
+               try {
+                 const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+                 const data = await resp.json();
+                 if (data && data.display_name) {
+                   updateSurvey(survey.id, { sampleSite: data.display_name });
+                 }
+               } catch(e) {
+                 // ignore
+               }
             }}
             programmaticUpdate={0}
           />
@@ -178,7 +206,7 @@ export default function SurveyDetails({ params }: { params: Promise<{ id: string
           </div>
         </div>
         <div className="overflow-x-auto w-full">
-          <div className="hidden md:block">
+          <div>
             <table className="w-full text-left whitespace-nowrap min-w-max">
               <thead className="bg-mint border-b border-forest/10">
                 <tr>

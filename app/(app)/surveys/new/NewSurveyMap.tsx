@@ -39,9 +39,10 @@ interface NewSurveyMapProps {
   lng: string;
   setPos: (lat: string, lng: string) => void;
   programmaticUpdate: number;
+  sampleSite?: string;
 }
 
-export default function NewSurveyMap({ lat, lng, setPos, programmaticUpdate }: NewSurveyMapProps) {
+export default function NewSurveyMap({ lat, lng, setPos, programmaticUpdate, sampleSite }: NewSurveyMapProps) {
   // Default to Nigeria, Rivers State
   const centerLat = lat ? parseFloat(lat) : 4.8156;
   const centerLng = lng ? parseFloat(lng) : 7.0498;
@@ -65,7 +66,18 @@ export default function NewSurveyMap({ lat, lng, setPos, programmaticUpdate }: N
         <Marker 
           position={[parseFloat(lat), parseFloat(lng)]}
           icon={customIcon}
-        />
+        >
+          {sampleSite && (
+            <Popup>
+              <div className="text-sm font-medium text-charcoal">
+                {sampleSite}
+              </div>
+              <div className="text-[11px] font-mono text-moss/50 mt-1">
+                {parseFloat(lat).toFixed(4)}, {parseFloat(lng).toFixed(4)}
+              </div>
+            </Popup>
+          )}
+        </Marker>
       )}
     </MapContainer>
   );

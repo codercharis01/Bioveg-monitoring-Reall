@@ -187,7 +187,7 @@ export const useSurveyStore = create<SurveyState>()(
 
   updateSurvey: (id, data) => set((state) => ({
     surveys: state.surveys.map(survey => 
-      survey.id === id ? { ...survey, ...data } : survey
+      survey.id === id ? { ...survey, ...data, status: data.status || 'Pending' } : survey
     )
   })),
 
@@ -240,7 +240,7 @@ export const useSurveyStore = create<SurveyState>()(
             }
             return s;
           });
-          return { ...survey, speciesList: updatedList };
+          return { ...survey, speciesList: updatedList, status: 'Pending' };
         } else {
           const quadratsArray = new Array(survey.numQuadrats).fill(0);
           quadratsArray[quadratIndex] = 1;
@@ -255,7 +255,7 @@ export const useSurveyStore = create<SurveyState>()(
             quadrats: quadratsArray,
           };
           
-          return { ...survey, speciesList: [...survey.speciesList, newSpecies] };
+          return { ...survey, speciesList: [...survey.speciesList, newSpecies], status: 'Pending' };
         }
       })
     };
@@ -275,7 +275,7 @@ export const useSurveyStore = create<SurveyState>()(
           return s;
         });
 
-        return { ...survey, speciesList: updatedList };
+        return { ...survey, speciesList: updatedList, status: 'Pending' };
       })
     };
   }),
@@ -285,6 +285,7 @@ export const useSurveyStore = create<SurveyState>()(
       if (survey.id !== surveyId) return survey;
       return {
         ...survey,
+        status: 'Pending',
         speciesList: survey.speciesList.map(s => 
           s.id === speciesId ? { ...s, ...data } : s
         )
@@ -297,6 +298,7 @@ export const useSurveyStore = create<SurveyState>()(
       if (survey.id !== surveyId) return survey;
       return {
         ...survey,
+        status: 'Pending',
         speciesList: survey.speciesList.filter(s => s.id !== speciesId)
       };
     })

@@ -54,7 +54,7 @@ export default function Analytics() {
     
     // For single survey, offer PDF, for many use Excel
     if (targetSurveys.length === 1) {
-      exportToPDF(`${targetSurveys[0].projectName}_Diversity_Report`, targetSurveys[0], profile, preferences);
+      await exportToPDF(`${targetSurveys[0].projectName}_Diversity_Report`, targetSurveys[0], profile, preferences);
     } else {
       const { shannon, simpson, richness, evenness } = calculateBiodiversityIndices(targetSurveys);
       const summaryData = [{
@@ -74,7 +74,7 @@ export default function Analytics() {
         'Total Abundance': s.quadrats.reduce((a, b) => a + b, 0)
       }));
 
-      exportToExcel(`${selectedProjectName}_Diversity_Analytics`, [
+      await exportToExcel(`${selectedProjectName}_Diversity_Analytics`, [
         { name: 'Summary', data: summaryData },
         { name: 'Species Data', data: speciesAbundance }
       ]);
@@ -82,8 +82,9 @@ export default function Analytics() {
   };
 
   const [mounted, setMounted] = useState(false);
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const { shannon, simpson, richness, evenness, familyData, strataData } = useMemo(() => {
     const indices = calculateBiodiversityIndices(targetSurveys);
@@ -120,8 +121,9 @@ export default function Analytics() {
 
   if (!mounted) {
     return (
-      <div className="flex h-full min-h-[300px] items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-forest border-t-transparent animate-spin" />
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-forest"></div>
+        <p className="text-moss text-sm">Loading...</p>
       </div>
     );
   }

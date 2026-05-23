@@ -1,6 +1,3 @@
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { SpeciesRecord, SurveySession } from './store';
 import { formatCoordinate } from './utils';
 
@@ -145,20 +142,22 @@ export function calculatePhytoParameters(surveys: SurveySession[], quadratSizeM2
  * Common Exports
  */
 export const exportToCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {
-  const csvContent = "data:text/csv;charset=utf-8," 
-    + headers.join(",") + "\n"
+  const csvContent = headers.join(",") + "\n"
     + rows.map(r => r.map(v => typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : v).join(",")).join("\n");
   
-  const encodedUri = encodeURI(csvContent);
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
+  link.setAttribute("href", url);
   link.setAttribute("download", filename.endsWith('.csv') ? filename : `${filename}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
-export const exportToExcel = (filename: string, sheets: { name: string, data: any[] }[]) => {
+export const exportToExcel = async (filename: string, sheets: { name: string, data: any[] }[]) => {
+  const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
   sheets.forEach(sheet => {
     const ws = XLSX.utils.json_to_sheet(sheet.data);
@@ -168,58 +167,97 @@ export const exportToExcel = (filename: string, sheets: { name: string, data: an
 };
 
 export async function exportToPDF(filename: string, survey: SurveySession, profile: any, preferences: any) {
+  const { jsPDF } = await import('jspdf');
+  const autoTableModule = await import('jspdf-autotable');
+  const autoTable = autoTableModule.default || (autoTableModule as unknown as CallableFunction);
+  
   const doc = new jsPDF();
   const indices = calculateBiodiversityIndices([survey]);
-  const phyto = calculatePhytoParameters([survey], 1); // Assuming 1m2 if not specified
+  const phyto = calculatePhytoParameters([survey], 1);
 
+  // Colors
+  const headerColor = [20, 70, 45] as [number, number, number];
+  const accentColor = [59, 130, 90] as [number, number, number];
+  
   // Header
+  // Banner background
+  doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
+  doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
+  
   doc.setFontSize(22);
-  doc.setTextColor(20, 60, 40);
-  doc.text("ECOSURVEY REPORT", 14, 25);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.text("ECOSURVEY REPORT", 14, 20);
+  
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Generated: ${new Date().toLocaleString()}`, doc.internal.pageSize.getWidth() - 14, 20, { align: 'right' });
+  
+  // Methodology Summary
+  doc.setFontSize(14);
+  doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.text("Methodology Summary", 14, 45);
   
   doc.setFontSize(10);
-  doc.setTextColor(100);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 32);
+  doc.setTextColor(50, 50, 50);
+  doc.setFont('helvetica', 'normal');
+  
+  const methodologyText = `This report summarizes the ecological data collected for project "${survey.projectName}". ` +
+    `Data was recorded on ${survey.date} at ${survey.siteName || survey.sampleSite || 'a specified location'} ` +
+    `using the ${survey.samplingMethod || 'standard'} sampling method. ` +
+    `A total of ${survey.numQuadrats} quadrats were evaluated across the ${survey.ecosystemType} ecosystem, ` +
+    `focusing on the ${survey.vegetationType} vegetation layer.`;
+  
+  doc.text(doc.splitTextToSize(methodologyText, 180), 14, 52);
   
   // Metadata Section
   doc.setFontSize(14);
-  doc.setTextColor(0);
-  doc.text("Project Information", 14, 45);
+  doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.text("Project Metadata", 14, 80);
   
   autoTable(doc, {
-    startY: 50,
+    startY: 85,
     body: [
       ['Project Name', survey.projectName, 'Date', survey.date],
       ['Site Name', survey.siteName || survey.sampleSite || '—', 'Ecosystem', survey.ecosystemType],
-      ['Researcher', survey.researcherName || `${profile.firstName} ${profile.lastName}`, 'Plots', survey.numQuadrats.toString()],
-      ['Coordinates', survey.lat ? `${formatCoordinate(survey.lat, false, preferences.coordinateFormat)}, ${formatCoordinate(survey.lng, true, preferences.coordinateFormat)}` : 'Not recorded', 'Method', survey.samplingMethod || '—'],
+      ['Researcher', survey.researcherName || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Anonymous', 'Plots', survey.numQuadrats.toString()],
+      ['Coordinates', survey.lat !== undefined ? `${formatCoordinate(survey.lat, false, preferences.coordinateFormat)}, ${formatCoordinate(survey.lng, true, preferences.coordinateFormat)}` : 'Not recorded', 'Method', survey.samplingMethod || '—'],
     ],
     theme: 'grid',
     styles: { fontSize: 9 },
-    columnStyles: { 0: { fontStyle: 'bold', fillColor: [240, 245, 240] }, 2: { fontStyle: 'bold', fillColor: [240, 245, 240] } }
+    columnStyles: { 0: { fontStyle: 'bold', fillColor: [240, 248, 245], textColor: headerColor }, 2: { fontStyle: 'bold', fillColor: [240, 248, 245], textColor: headerColor } }
   });
 
   // Indices Section
   let nextY = (doc as any).lastAutoTable.finalY + 15;
+  doc.setFontSize(14);
+  doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
+  doc.setFont('helvetica', 'bold');
   doc.text("Biodiversity Indices", 14, nextY);
   
   autoTable(doc, {
     startY: nextY + 5,
-    head: [['Index Name', 'Formula', 'Result']],
+    head: [['Index Name', 'Description / Formula', 'Result']],
     body: [
-      ['Shannon Diversity (H\')', '-Σ p_i ln(p_i)', indices.shannon.toFixed(3)],
-      ['Simpson Index (D)', '1 - Σ(n_i/N)²', indices.simpson.toFixed(3)],
-      ['Species Richness (S)', 'Total Count', indices.richness.toString()],
-      ['Pielou\'s Evenness (J)', 'H\' / ln(S)', indices.evenness.toFixed(3)],
+      ['Shannon Diversity (H\')', 'Measures species diversity and abundance. (-Σ p_i ln(p_i))', indices.shannon.toFixed(3)],
+      ['Simpson Index (D)', 'Measures probability that two randomly selected individuals belong to different species.', indices.simpson.toFixed(3)],
+      ['Species Richness (S)', 'Total number of unique species found.', indices.richness.toString()],
+      ['Pielou\'s Evenness (J)', 'Measures how equal the community is numerically.', indices.evenness.toFixed(3)],
     ],
     theme: 'striped',
-    headStyles: { fillColor: [40, 80, 60] }
+    headStyles: { fillColor: accentColor, textColor: [255, 255, 255] }
   });
 
   // Species Parameters Table
   nextY = (doc as any).lastAutoTable.finalY + 15;
-  if (nextY > 250) { doc.addPage(); nextY = 20; }
-  doc.text("Phytosociological Parameters", 14, nextY);
+  if (nextY > 230) { doc.addPage(); nextY = 20; }
+  
+  doc.setFontSize(14);
+  doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.text("Species Inventory & Phytosociological Parameters", 14, nextY);
   
   const speciesData = phyto.parameters.map((p, i) => [
     (i + 1).toString(),
@@ -233,11 +271,11 @@ export async function exportToPDF(filename: string, survey: SurveySession, profi
 
   autoTable(doc, {
     startY: nextY + 5,
-    head: [['#', 'Species Name', 'Family', 'N', 'Freq %', 'Dens', 'IVI']],
+    head: [['#', 'Species Name', 'Family', 'Abund.', 'Freq %', 'Density', 'IVI']],
     body: speciesData,
     theme: 'grid',
     styles: { fontSize: 8 },
-    headStyles: { fillColor: [40, 80, 60] }
+    headStyles: { fillColor: accentColor, textColor: [255, 255, 255] }
   });
 
   doc.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);

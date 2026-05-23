@@ -25,14 +25,28 @@ export default function SpeciesEntry() {
   const updateSpecies = useSurveyStore(state => state.updateSpecies);
   const deleteSpecies = useSurveyStore(state => state.deleteSpecies);
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-forest"></div>
+        <p className="text-moss text-sm">Loading...</p>
+      </div>
+    );
+  }
+
   // Extract unique site names and dates for filter suggestions
   const sites = Array.from(new Set(surveys.map(s => s.sampleSite))).filter(Boolean);
   const dates = Array.from(new Set(surveys.map(s => s.date))).filter(Boolean);
 
   const filteredSurveys = surveys.filter(s => {
-    const matchesSearch = s.projectName.toLowerCase().includes(projectSearchQuery.toLowerCase());
-    const matchesSite = !siteFilter || s.sampleSite === siteFilter;
-    const matchesDate = !dateFilter || s.date === dateFilter;
+    const matchesSearch = (s?.projectName || '').toLowerCase().includes(projectSearchQuery.toLowerCase());
+    const matchesSite = !siteFilter || s?.sampleSite === siteFilter;
+    const matchesDate = !dateFilter || s?.date === dateFilter;
     return matchesSearch && matchesSite && matchesDate;
   });
 
@@ -78,30 +92,18 @@ export default function SpeciesEntry() {
     setSortConfig({ key, direction });
   };
 
-  const exportToCSV = () => {
+  const handleExportCSV = () => {
     if (!selectedSurvey) return;
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "No.,Species Name,Local Name,Family,Total Abundance\n";
-
-    filteredSpecies.forEach((species, index) => {
+    const headers = ["No.", "Species Name", "Local Name", "Family", "Total Abundance"];
+    const rows = filteredSpecies.map((species, index) => {
       const abundance = species.quadrats.reduce((acc, val) => acc + val, 0);
-      const row = [
-        index + 1,
-        `"${species.name}"`,
-        `"${species.localName || ''}"`,
-        `"${species.family || ''}"`,
-        abundance
-      ].join(",");
-      csvContent += row + "\n";
+      return [index + 1, species.name, species.localName || '', species.family || '', abundance];
     });
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${selectedSurvey.projectName}_species.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    
+    // Import dynamically or check if we can import at top
+    import('@/lib/export-utils').then(({ exportToCSV }) => {
+      exportToCSV(`${selectedSurvey.projectName}_species`, headers, rows);
+    });
   };
 
   return (
@@ -210,13 +212,13 @@ export default function SpeciesEntry() {
                       <div className="text-[11px] opacity-70 truncate">{survey.sampleSite} · {survey.speciesList.length} species</div>
                     </div>
                   </button>
-                  <Link
+                  <a
                     href={`/surveys/${survey.id}/record`}
                     className="p-2 rounded-lg bg-mint hover:bg-sage-pale text-forest/70 hover:text-forest transition-colors flex-shrink-0"
                     title="Add Species"
                   >
                     <Plus className="w-4 h-4" />
-                  </Link>
+                  </a>
                 </div>
               ))}
               {filteredSurveys.length === 0 && (
@@ -256,19 +258,19 @@ export default function SpeciesEntry() {
                       Filter
                     </button>
                     <button
-                      onClick={exportToCSV}
+                      onClick={handleExportCSV}
                       className="hidden sm:flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors whitespace-nowrap"
                     >
                       <Download className="w-4 h-4" />
                       Export CSV
                     </button>
-                    <Link 
+                    <a 
                       href={`/surveys/${selectedSurvey.id}/record`}
                       className="flex items-center gap-1.5 px-4 py-2 bg-forest hover:bg-forest-mid text-white rounded-lg text-[13px] font-medium transition-colors whitespace-nowrap"
                     >
                       <Plus className="w-4 h-4" />
                       Add Species
-                    </Link>
+                    </a>
                   </div>
                 </div>
                 
@@ -555,7 +557,7 @@ export default function SpeciesEntry() {
                 <div className="p-4 px-5 border-b border-forest/10 bg-mint">
                   <h3 className="text-[14px] font-semibold text-charcoal">Species Distribution Summary</h3>
                 </div>
-               <div className="hidden md:block overflow-x-auto">
+               <div className="overflow-x-auto w-full smooth-scroll">
                   <table className="w-full border-collapse min-w-max">
                     <thead>
                       <tr>
@@ -598,29 +600,6 @@ export default function SpeciesEntry() {
                       )}
                     </tbody>
                   </table>
-                </div>
-                
-                {/* Mobile Species Distribution Cards */}
-                <div className="md:hidden flex flex-col gap-2 p-2 bg-slate-50/50">
-                   {speciesList.length > 0 ? (
-                     speciesList.map((s) => (
-                        <div key={`dist-${s.id}`} className="bg-white border border-forest/10 p-3 rounded-lg flex flex-col gap-2">
-                           <div className="font-medium text-charcoal text-[13px]">{s.name}</div>
-                           <div className="flex flex-wrap gap-1">
-                              {s.quadrats.map((amount, i) => amount > 0 && (
-                                <div key={i} className="text-[10.5px] bg-sage-pale text-forest px-2 py-0.5 rounded border border-forest/10">
-                                  Q{i + 1}: <span className="font-bold">{amount}</span>
-                                </div>
-                              ))}
-                              {s.quadrats.reduce((a, b) => a + b, 0) === 0 && (
-                                <span className="text-[11px] text-moss/40">- recorded -</span>
-                              )}
-                           </div>
-                        </div>
-                     ))
-                   ) : (
-                      <div className="p-4 text-center text-moss/60 text-[12px]">No species data available</div>
-                   )}
                 </div>
               </div>
             </>

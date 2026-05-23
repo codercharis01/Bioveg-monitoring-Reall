@@ -59,6 +59,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const surveys = useSurveyStore(state => state.surveys);
   const profile = useSurveyStore(state => state.profile);
   const identity = useSurveyStore(state => state.identity);
@@ -147,34 +153,31 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   const handleLogOut = async () => {
     setIsLoggingOut(true);
-    try {
-      // 1. Clear store immediately to stop any sync processes or data leakage
-      useSurveyStore.getState().resetStore();
-      
-      // 2. Perform sign out
-      await supabase.auth.signOut();
-      
-      // 3. Clear all potential localStorage manually as a safety measure
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('ecosurvey-storage-v5');
-      }
-      
-      // 4. Force full page reload to home to ensure clean context
-      window.location.href = '/';
-    } catch (e) { 
-      console.error("Logout error:", e);
+    
+    // Fire and forget sign out
+    supabase.auth.signOut().catch(console.error);
+
+    // Force local storage clearance immediately
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('ecosurvey-storage-v5');
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+          localStorage.removeItem(key);
+        }
+      });
+      // Navigate home immediately
       window.location.href = '/';
     }
   };
 
   const showBack = pathname !== '/dashboard' && pathname !== '/';
 
-  if (isLoggingOut) {
+  if (!mounted || isLoggingOut) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-[#FDFCF8] z-50">
         <div className="flex flex-col items-center">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-forest mb-4"></div>
-          <p className="text-moss font-medium">Logging out...</p>
+          {isLoggingOut && <p className="text-moss font-medium">Logging out...</p>}
         </div>
       </div>
     );
@@ -185,7 +188,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-[240px] bg-forest flex-shrink-0 z-50">
         <div className="p-6 pb-5 border-b border-white/10">
-          <Link href="/dashboard" className="flex items-center gap-2.5 outline-none hover:opacity-90 transition-opacity">
+          <a href="/dashboard" className="flex items-center gap-2.5 outline-none hover:opacity-90 transition-opacity">
             <div className="w-8 h-8 flex items-center justify-center bg-white/10 rounded-md">
               <Leaf className="w-[18px] h-[18px] text-white/85" />
             </div>
@@ -193,7 +196,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <div className="text-[15px] font-semibold text-white tracking-[-0.3px]">Bioveg Monitoring</div>
               <div className="text-[10px] text-white/35 font-normal tracking-[0.5px] uppercase">Field Research v2.4</div>
             </div>
-          </Link>
+          </a>
         </div>
         
         <nav className="flex-1 px-2 py-3 overflow-y-auto flex flex-col gap-0.5">
@@ -205,7 +208,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               {section.items.map((item) => {
                 const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname?.startsWith(item.href) && !item.href.includes('new'));
                 return (
-                  <Link
+                  <a
                     key={item.href}
                     href={item.href}
                     className={cn(
@@ -222,7 +225,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                         {surveys.length}
                       </span>
                     )}
-                  </Link>
+                  </a>
                 );
               })}
             </div>
@@ -261,9 +264,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <span className="hidden sm:inline">Your ecological surveys are stored locally and will sync when internet becomes available.</span>
               <span className="sm:hidden">Local mode.</span>
             </div>
-            <Link href="/sync" className="text-amber-700 font-semibold hover:underline text-xs bg-amber-200/50 px-2 py-1 rounded hidden sm:block">
+            <a href="/sync" className="text-amber-700 font-semibold hover:underline text-xs bg-amber-200/50 px-2 py-1 rounded hidden sm:block">
               Create Account &rarr;
-            </Link>
+            </a>
           </div>
         )}
         
@@ -296,10 +299,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 }
               })()}
             </div>
-            <Link href="/surveys/new" className="flex items-center gap-1.5 px-3.5 py-1.5 bg-forest hover:bg-forest-mid text-white rounded-md text-[13px] font-medium transition-colors">
+            <a href="/surveys/new" className="flex items-center gap-1.5 px-3.5 py-1.5 bg-forest hover:bg-forest-mid text-white rounded-md text-[13px] font-medium transition-colors">
               <PlusCircle className="w-[15px] h-[15px]" />
               <span className="hidden sm:inline">New Survey</span>
-            </Link>
+            </a>
             <button 
               onClick={handleLogOut}
               disabled={isLoggingOut}
@@ -321,7 +324,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           {mobileNavItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname?.startsWith(item.href) && !item.href.includes('new'));
             return (
-              <Link
+              <a
                 key={item.href}
                 href={item.href}
                 className={cn(
@@ -331,7 +334,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               >
                 <item.icon className={cn("w-5 h-5", isActive ? "stroke-[2.5px]" : "stroke-2 opacity-70")} />
                 <span className={cn("text-[10px]", isActive ? "font-semibold" : "font-medium opacity-70")}>{item.label}</span>
-              </Link>
+              </a>
             );
           })}
           <button
@@ -373,7 +376,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     {section.items.map((item) => {
                       const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname?.startsWith(item.href) && !item.href.includes('new'));
                       return (
-                        <Link
+                        <a
                           key={item.href}
                           href={item.href}
                           className={cn(
@@ -390,7 +393,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                               {surveys.length}
                             </span>
                           )}
-                        </Link>
+                        </a>
                       );
                     })}
                   </div>
@@ -398,7 +401,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </nav>
               
               <div className="flex-col p-4 border-t border-white/10">
-                <Link href="/settings" className="flex items-center gap-2.5 px-3 py-2 rounded-md hover:bg-white/5 transition-colors mb-2">
+                <a href="/settings" className="flex items-center gap-2.5 px-3 py-2 rounded-md hover:bg-white/5 transition-colors mb-2">
                   <div className="w-[30px] h-[30px] rounded-full bg-moss flex items-center justify-center text-xs font-semibold text-white flex-shrink-0">
                     {pInitials}
                   </div>
@@ -406,7 +409,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     <div className="text-[12.5px] font-medium text-white/85 truncate">{profile?.title} {profile?.firstName} {profile?.lastName}</div>
                     <div className="text-[11px] text-white/35 truncate">{profile?.role || "Settings"}</div>
                   </div>
-                </Link>
+                </a>
                 <button 
                   onClick={handleLogOut}
                   disabled={isLoggingOut}

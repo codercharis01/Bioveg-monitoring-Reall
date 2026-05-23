@@ -35,7 +35,9 @@ export default function SyncPage() {
   const pendingCount = pendingSurveys.length;
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    let unmounted = false;
+    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (unmounted) return;
       // If user logs in successfully, auto-sync
       if (session?.user && pendingCount > 0 && !identity.isGuest) {
         await syncData(session.user.id);
@@ -43,7 +45,8 @@ export default function SyncPage() {
     });
 
     return () => {
-      subscription.unsubscribe();
+      unmounted = true;
+      data.subscription.unsubscribe();
     };
   }, [pendingCount, identity.isGuest, syncData]);
   
@@ -58,47 +61,55 @@ export default function SyncPage() {
 
   const handleAuthAction = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedEmail = email.trim();
     setAuthLoading(true);
     setAuthError('');
     try {
-      if (!email && view !== 'forgot') throw new Error("Please enter your email");
+      if (!trimmedEmail && view !== 'forgot') throw new Error("Please enter your email");
       
       if (view === 'login') {
-        const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error: authError } = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
         if (authError) throw authError;
 
         // Auto-sync
         const state = useSurveyStore.getState();
         const pendingSurveys = state.surveys.filter(s => s.status === 'Pending');
-        if (pendingSurveys.length > 0) {
-          try {
-            const updates = pendingSurveys.map(survey => ({
-              id: survey.id,
-              user_id: data.user.id,
-              device_id: state.identity.local_device_id,
-              survey_data: survey,
-              sync_status: "Synced",
-              updated_at: new Date().toISOString()
-            }));
-            const { error: dbError } = await supabase.from('surveys').upsert(updates);
-            if (!dbError) {
-              pendingSurveys.forEach(survey => {
-                state.updateSurvey(survey.id, { status: "Synced" });
-              });
-              state.setLastSyncedAt(Date.now());
+        if (pendingSurveys.length > 0 && data.user) {
+          (async () => {
+            try {
+              const updates = pendingSurveys.map(survey => ({
+                id: survey.id,
+                user_id: data.user.id,
+                device_id: state.identity.local_device_id,
+                survey_data: survey,
+                sync_status: "Synced",
+                updated_at: new Date().toISOString()
+              }));
+              const { error: dbError } = await supabase.from('surveys').upsert(updates);
+              if (!dbError) {
+                pendingSurveys.forEach(survey => {
+                  state.updateSurvey(survey.id, { status: "Synced" });
+                });
+                state.setLastSyncedAt(Date.now());
+              }
+            } catch (e) {
+              console.error(e);
             }
-          } catch (e) {
-            console.error(e);
-          }
+          })();
         }
         
         if (state.identity.isGuest) {
           state.setIdentity({ isGuest: false });
         }
-        router.push('/dashboard');
+        
+        window.location.href = '/dashboard';
+        return;
       } else if (view === 'register') {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
+        if (!password) throw new Error("Please enter a password");
+        if (password.length < 6) throw new Error("Password must be at least 6 characters long");
+
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: trimmedEmail,
           password,
           options: {
             data: {
@@ -111,25 +122,37 @@ export default function SyncPage() {
           }
         });
         if (signUpError) throw signUpError;
+        
+        if (data.session) {
+          if (useSurveyStore.getState().identity.isGuest) {
+            useSurveyStore.getState().setIdentity({ isGuest: false });
+          }
+          window.location.href = '/dashboard';
+          return;
+        }
+
         setView('verify');
       } else if (view === 'forgot') {
-        if (!email) throw new Error("Please enter your email address.");
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard`,
+        if (!trimmedEmail) throw new Error("Please enter your email address.");
+        const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+          redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/?view=recovery`,
         });
         if (error) throw error;
         setView('reset-sent');
       }
     } catch (err: any) {
+      console.error("Auth error:", err);
       if (err.message === 'Invalid login credentials') {
         setAuthError("Password or Email Incorrect");
+      } else if (err.message === 'Failed to fetch') {
+        setAuthError("Network error: Could not reach authentication server.");
       } else if (err.message.includes('already registered')) {
         setAuthError("User already exists, Sign In?");
       } else {
         setAuthError(err.message);
       }
     } finally {
-      if (view !== 'verify') setAuthLoading(false);
+      setAuthLoading(false);
     }
   };
 

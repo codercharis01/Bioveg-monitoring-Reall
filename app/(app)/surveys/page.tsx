@@ -20,6 +20,11 @@ export default function SurveysList() {
   const { syncing, syncData } = useSyncEngine();
   
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [, setTick] = useState(0);
 
@@ -73,25 +78,36 @@ export default function SurveysList() {
   };
 
   const handleExport = () => {
-    const csvRows = [];
     const headers = ['ID', 'Project Name', 'Site Name', 'Ecosystem Type', 'Date', 'Status', 'No. Quadrats', 'Lat', 'Lng'];
-    csvRows.push(headers.join(','));
-    for (const s of filteredSurveys) {
-      const row = [s?.id, s?.projectName, s?.siteName, s?.ecosystemType, s?.date, s?.status, s?.numQuadrats, s?.lat, s?.lng].map(v => `"${v || ''}"`);
-      csvRows.push(row.join(','));
-    }
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'surveys.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    const rows = filteredSurveys.map(s => [
+      s?.id || '',
+      s?.projectName || '',
+      s?.siteName || '',
+      s?.ecosystemType || '',
+      s?.date || '',
+      s?.status || '',
+      s?.numQuadrats || 0,
+      s?.lat || '',
+      s?.lng || ''
+    ]);
+    
+    import('@/lib/export-utils').then(({ exportToCSV }) => {
+      exportToCSV('surveys', headers, rows);
+    });
   };
 
   // Compute stats
   const totalSurveys = surveys.length;
   const totalProjects = new Set(surveys.map(s => s?.siteName)).size; // Using siteName functionally as project
+
+  if (!mounted) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-forest"></div>
+        <p className="text-moss text-sm">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1400px] mx-auto pb-10 space-y-6">
@@ -140,13 +156,13 @@ export default function SurveysList() {
             <Upload className="w-[18px] h-[18px]" />
           </button>
           
-          <Link
+          <a
             href="/surveys/new"
-            className="hidden items-center gap-2 px-4 py-2.5 bg-forest text-white rounded-lg text-[14.5px] font-medium hover:bg-forest-mid transition-colors shadow-sm whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2.5 bg-forest text-white rounded-lg text-[14.5px] font-medium hover:bg-forest-mid transition-colors shadow-sm whitespace-nowrap"
           >
             <Plus className="w-[16px] h-[16px]" />
             New Survey
-          </Link>
+          </a>
         </div>
       </div>
 

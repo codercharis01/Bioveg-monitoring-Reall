@@ -41,7 +41,14 @@ export default function NewSurvey() {
   const updateDraft = useSurveyStore(state => state.updateDraft);
   const clearDraft = useSurveyStore(state => state.clearDraft);
   
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [currentStep, setCurrentStep] = useState(1);
+  const [isCustomQuadratSize, setIsCustomQuadratSize] = useState(false);
   const [programmaticUpdate, setProgrammaticUpdate] = useState(0);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [formData, setFormData] = useState({
@@ -59,6 +66,7 @@ export default function NewSurvey() {
     lat: draftSurvey?.lat !== undefined ? draftSurvey.lat.toString() : '',
     lng: draftSurvey?.lng !== undefined ? draftSurvey.lng.toString() : ''
   });
+
 
   useEffect(() => {
     updateDraft({
@@ -152,6 +160,15 @@ export default function NewSurvey() {
       setIsGeocoding(false);
     }
   };
+
+  if (!mounted) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-forest"></div>
+        <p className="text-moss text-sm">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[800px] mx-auto w-full pb-10">
@@ -293,19 +310,44 @@ export default function NewSurvey() {
           {currentStep === 3 && (
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 flex flex-col items-start w-full">
                   <label className="text-[12px] font-medium text-moss/80">Quadrat Size</label>
-                  <select 
-                    value={formData.quadratSize}
-                    onChange={e => setFormData({...formData, quadratSize: e.target.value})}
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-forest/20 focus:border-moss focus:ring-[3px] focus:ring-sage/20 transition-all text-[13.5px] text-charcoal bg-[#faf6f0] focus:bg-white outline-none" 
-                  >
-                    <option>5 × 5 m (25 m²)</option>
-                    <option>10 × 10 m (100 m²)</option>
-                    <option>20 × 20 m (400 m²)</option>
-                    <option>25 × 25 m (625 m²)</option>
-                    <option>Custom dimensions</option>
-                  </select>
+                  {!isCustomQuadratSize ? (
+                    <select 
+                      value={formData.quadratSize}
+                      onChange={e => {
+                        if (e.target.value === 'Custom dimensions') {
+                           setIsCustomQuadratSize(true);
+                           setFormData({...formData, quadratSize: ''});
+                        } else {
+                           setFormData({...formData, quadratSize: e.target.value});
+                        }
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-lg border border-forest/20 focus:border-moss focus:ring-[3px] focus:ring-sage/20 transition-all text-[13.5px] text-charcoal bg-[#faf6f0] focus:bg-white outline-none" 
+                    >
+                      <option>5 × 5 m (25 m²)</option>
+                      <option>10 × 10 m (100 m²)</option>
+                      <option>20 × 20 m (400 m²)</option>
+                      <option>25 × 25 m (625 m²)</option>
+                      <option>Custom dimensions</option>
+                    </select>
+                  ) : (
+                    <div className="w-full relative">
+                      <input 
+                        type="text" 
+                        placeholder="e.g. 50 × 50 m"
+                        value={formData.quadratSize}
+                        onChange={e => setFormData({...formData, quadratSize: e.target.value})}
+                        className="w-full px-3.5 py-2.5 rounded-lg border border-forest/20 focus:border-moss focus:ring-[3px] focus:ring-sage/20 transition-all text-[13.5px] text-charcoal bg-[#faf6f0] focus:bg-white outline-none" 
+                      />
+                      <button 
+                        onClick={() => { setIsCustomQuadratSize(false); setFormData({...formData, quadratSize: '10 × 10 m (100 m²)'}); }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-medium text-moss hover:bg-forest/10 px-2 py-1 rounded"
+                      >
+                       Standard
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[12px] font-medium text-moss/80">Number of Plots</label>
@@ -366,7 +408,22 @@ export default function NewSurvey() {
                 <NewSurveyMap 
                   lat={formData.lat} 
                   lng={formData.lng} 
-                  setPos={(lat, lng) => setFormData(prev => ({ ...prev, lat, lng }))} 
+                  sampleSite={formData.sampleSite}
+                  setPos={async (lat, lng) => {
+                    setFormData(prev => ({ ...prev, lat, lng }));
+                    setIsGeocoding(true);
+                    try {
+                      const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+                      const data = await resp.json();
+                      if (data && data.display_name) {
+                        setFormData(prev => ({...prev, sampleSite: data.display_name}));
+                      }
+                    } catch (e) {
+                      console.error('Reverse geocoding failed on map click:', e);
+                    } finally {
+                      setIsGeocoding(false);
+                    }
+                  }} 
                   programmaticUpdate={programmaticUpdate}
                 />
                 

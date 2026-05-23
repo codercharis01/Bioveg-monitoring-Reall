@@ -45,13 +45,13 @@ export default function Dashboard() {
         const existing = map.get(survey.projectName);
         // Combine stats
         const mergedSpecies = new Set([
-          ...existing.speciesList.map((s: any) => s.name),
-          ...survey.speciesList.map(s => s.name)
+          ...(existing.speciesList || []).map((s: any) => s?.name),
+          ...(survey.speciesList || []).map((s: any) => s?.name)
         ]);
         
         map.set(survey.projectName, {
           ...existing,
-          numQuadrats: existing.numQuadrats + survey.numQuadrats,
+          numQuadrats: (existing.numQuadrats || 0) + (survey.numQuadrats || 0),
           uniqueSpeciesCount: mergedSpecies.size,
           count: existing.count + 1,
           status: existing.status === 'Pending' || survey.status === 'Pending' ? 'Pending' : 'Synced'
@@ -126,13 +126,13 @@ export default function Dashboard() {
         <div className="bg-white border border-forest/10 rounded-[16px] overflow-hidden">
           <div className="flex items-center justify-between p-4 px-5 border-b border-forest/10">
             <span className="text-[13.5px] font-semibold text-charcoal tracking-[-0.2px]">Active Research Projects</span>
-            <Link href="/surveys" className="text-[12px] text-moss font-medium hover:text-forest transition-colors">View all</Link>
+            <a href="/surveys" className="text-[12px] text-moss font-medium hover:text-forest transition-colors">View all</a>
           </div>
           <div className="py-2">
             {uniqueProjects.length === 0 ? (
               <div className="p-8 text-center text-[13px] text-moss/70">No projects found. Start by creating a new survey.</div>
             ) : uniqueProjects.map((project) => (
-              <Link href={`/surveys`} key={project.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-mint transition-colors cursor-pointer group">
+              <a href={`/surveys`} key={project.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-mint transition-colors cursor-pointer group">
                 <div className={cn(
                   "w-2 h-2 rounded-full flex-shrink-0",
                   project.vegetationType?.toLowerCase().includes('forest') || project.ecosystemType?.toLowerCase().includes('forest')
@@ -163,7 +163,7 @@ export default function Dashboard() {
                     {project.status}
                   </span>
                 </div>
-              </Link>
+              </a>
             ))}
           </div>
         </div>

@@ -42,7 +42,7 @@ export default function ExportPage() {
     return [...phyto.parameters].sort((a, b) => b.IVI - a.IVI)[0];
   }, [phyto]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!selectedSurvey) return showToast('No survey selected.');
     
     if (selectedFormat === 'csv') {
@@ -78,7 +78,7 @@ export default function ExportPage() {
         'IVI': p.IVI.toFixed(2)
       })) || [];
 
-      exportToExcel(`${selectedSurvey.projectName}_full_report`, [
+      await exportToExcel(`${selectedSurvey.projectName}_full_report`, [
         { name: 'Species List', data: speciesData },
         { name: 'Parameters', data: parametersData },
         { name: 'Summary', data: [{
@@ -90,7 +90,7 @@ export default function ExportPage() {
         }
       ]);
     } else if (selectedFormat === 'pdf') {
-      exportToPDF(`${selectedSurvey.projectName}_report`, selectedSurvey, profile, preferences);
+      await exportToPDF(`${selectedSurvey.projectName}_report`, selectedSurvey, profile, preferences);
     }
   };
 
@@ -201,7 +201,7 @@ export default function ExportPage() {
       </div>
 
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }} className="flex-wrap pb-10">
-        <button className="btn-ghost" onClick={() => exportToPDF(`${selectedSurvey.projectName}_Preview`, selectedSurvey, profile, preferences)}>Preview full report</button>
+        <button className="btn-ghost" onClick={async () => await exportToPDF(`${selectedSurvey.projectName}_Preview`, selectedSurvey, profile, preferences)}>Preview full report</button>
         <button className="btn-ghost" onClick={() => {
           if (!selectedSurvey) return showToast('No survey selected.');
           navigator.clipboard.writeText(`${window.location.origin}/surveys/${selectedSurvey.id}`);
